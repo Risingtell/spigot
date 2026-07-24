@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# secrets — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+keys/
+*.dat
+
+# build / cache
+dist/
+*.tsbuildinfo
+.DS_Store
+
+# internal working docs — not for judges
+SUBMISSION.md
+VIDEO_SCRIPT.md
+DEMO_SCRIPT.md
+PLAN.md
+WHATSAPP.md
+
+# local runtime data (keep the reproduction script, not the raw data)
+.data/
+*.local.json
