@@ -9,7 +9,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "demo": "tsx examples/demo.ts",
-    "agent": "tsx --env-file=.env.local src/run-live.ts"
+    "agent": "node --env-file=.env.local --import tsx src/run-live.ts"
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "^10.6.0",

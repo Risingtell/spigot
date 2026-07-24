@@ -88,6 +88,13 @@ export class StreamingAgent {
 
       const quote = this.meter.quoteTick(session.id);
       const cost = BigInt(quote.amount);
+
+      // A zero-length tick owes nothing. Skip it rather than settle it, so the
+      // proof feed never carries a ghost settlement (an event with no on-chain
+      // transfer behind it). The elapsed time rolls into the next tick, because
+      // the meter only advances lastSettledAt when a tick is actually committed.
+      if (cost === 0n) continue;
+
       const ctx: TickContext = { tick, session, quote, spentUnits: spent };
 
       // Would this tick blow the budget? Stop.

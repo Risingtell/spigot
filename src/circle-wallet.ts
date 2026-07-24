@@ -9,7 +9,7 @@
  */
 
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
-import { ARC_BLOCKCHAIN, arcTxUrl } from "./arc.js";
+import { ARC_BLOCKCHAIN, USDC_DECIMALS, arcTxUrl } from "./arc.js";
 
 const apiKey = process.env.CIRCLE_API_KEY;
 const entitySecret = process.env.CIRCLE_ENTITY_SECRET;
@@ -94,7 +94,7 @@ export async function payAndConfirm(opts: {
     walletId: opts.walletId,
     tokenId,
     destinationAddress: opts.to,
-    amount: [opts.amountUsd.toFixed(USDC_FIXED)],
+    amount: [opts.amountUsd.toFixed(USDC_DECIMALS)],
     fee: { type: "level", config: { feeLevel: "MEDIUM" } },
   });
   const txId = created.data?.id;
@@ -106,5 +106,3 @@ export async function payAndConfirm(opts: {
 
   return { txHash: result.txHash, explorerUrl: arcTxUrl(result.txHash), state: result.state };
 }
-
-const USDC_FIXED = 6;
