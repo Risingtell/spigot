@@ -1,0 +1,133 @@
+/* Spigot design system. One deliberate dark theme, one accent (brass/amber, the
+ * colour of a tap of value), two fonts: Space Grotesk (display) + JetBrains Mono. */
+
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+
+  --background: 24 14% 5%;
+  --foreground: 40 22% 94%;
+  --card: 24 14% 8%;
+  --card-foreground: 40 22% 94%;
+  --muted: 28 10% 13%;
+  --muted-foreground: 34 12% 62%;
+  --border: 30 12% 16%;
+  --primary: 38 95% 56%;
+  --primary-foreground: 26 40% 8%;
+  --accent: 158 64% 44%;
+  --accent-foreground: 160 40% 6%;
+  --destructive: 4 84% 60%;
+  --radius: 0.8rem;
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-border: hsl(var(--border));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  background-image:
+    radial-gradient(48rem 30rem at 50% -8rem, hsl(38 95% 56% / 0.1), transparent 70%),
+    radial-gradient(36rem 26rem at 88% 4%, hsl(158 64% 44% / 0.06), transparent 70%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.text-gradient {
+  background-image: linear-gradient(100deg, hsl(38 95% 62%), hsl(30 92% 56%) 55%, hsl(158 64% 50%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 hsl(38 95% 56% / 0.5); }
+  70% { box-shadow: 0 0 0 10px hsl(38 95% 56% / 0); }
+  100% { box-shadow: 0 0 0 0 hsl(38 95% 56% / 0); }
+}
+.animate-live { animation: pulse-ring 1.8s ease-out infinite; }
+
+@keyframes tick-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-tick { animation: tick-in 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+
+::selection {
+  background: hsl(38 95% 56% / 0.25);
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* subtle inner-light + drop elevation for the primary surfaces */
+.card-glow {
+  box-shadow:
+    inset 0 1px 0 0 hsl(40 40% 96% / 0.04),
+    0 24px 70px -30px hsl(38 95% 56% / 0.22);
+}
+
+/* a thin, flowing accent line: the visual metaphor for a stream of value */
+@keyframes flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.flow-line {
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    hsl(38 95% 56% / 0.9) 30%,
+    hsl(158 64% 50% / 0.9) 55%,
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: flow 3.2s linear infinite;
+}
+
+@keyframes drip {
+  0% { transform: translateY(-140%); opacity: 0; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateY(160%); opacity: 0; }
+}
+.animate-drip { animation: drip 1.6s cubic-bezier(0.5, 0, 0.6, 1) infinite; }
+
+.grid-bg {
+  background-image:
+    linear-gradient(hsl(40 22% 94% / 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(40 22% 94% / 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(60% 50% at 50% 0%, black, transparent 75%);
+}

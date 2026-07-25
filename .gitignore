@@ -25,3 +25,5 @@ WHATSAPP.md
 # local runtime data (keep the reproduction script, not the raw data)
 .data/
 *.local.json
+
+.vercel
