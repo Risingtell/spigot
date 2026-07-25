@@ -119,7 +119,7 @@ export function Console() {
                 {fee.cadence.map((c, i, all) => (
                   <span key={c.label}>
                     <span className="text-foreground">{c.settleEverySeconds.toFixed(1)}s</span> on a{" "}
-                    {usd(c.ratePerSecondUsd)}/sec {c.label.toLowerCase()}
+                    {usd(c.ratePerSecondUsd)}/sec {c.label}
                     {i < all.length - 1 ? ", " : ". "}
                   </span>
                 ))}

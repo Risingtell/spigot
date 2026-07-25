@@ -16,9 +16,9 @@ export const dynamic = "force-dynamic";
 const MAX_OVERHEAD_RATIO = 0.05;
 
 const STREAM_PRICES: { label: string; ratePerSecond: string }[] = [
-  { label: "Market data feed", ratePerSecond: "1000" }, //     $0.001/sec
-  { label: "Inference capacity", ratePerSecond: "50000" }, //   $0.05/sec
-  { label: "Reserved GPU", ratePerSecond: "500000" }, //        $0.50/sec
+  { label: "market data feed", ratePerSecond: "1000" }, //     $0.001/sec
+  { label: "inference capacity", ratePerSecond: "50000" }, //   $0.05/sec
+  { label: "reserved GPU", ratePerSecond: "500000" }, //        $0.50/sec
 ];
 
 export async function GET() {
