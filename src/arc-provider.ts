@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ArcSettlementProvider - the bridge that makes meter402's streaming meter settle
  * for real on Arc.
  *
@@ -11,8 +11,8 @@
  */
 
 import type { SettlementProvider, TickQuote, SettlementResult } from "meter402";
-import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc.js";
-import { payAndConfirm } from "./circle-wallet.js";
+import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc";
+import { payAndConfirm } from "./circle-wallet";
 
 export class ArcSettlementProvider implements SettlementProvider {
   readonly network = ARC_TESTNET_CAIP2;

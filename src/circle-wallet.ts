@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Circle developer-controlled wallets on Arc Testnet.
  *
  * Each autonomous agent, and each service provider, is a real Circle wallet on
@@ -9,7 +9,7 @@
  */
 
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
-import { ARC_BLOCKCHAIN, USDC_DECIMALS, arcTxUrl } from "./arc.js";
+import { ARC_BLOCKCHAIN, USDC_DECIMALS, arcTxUrl } from "./arc";
 
 const apiKey = process.env.CIRCLE_API_KEY;
 const entitySecret = process.env.CIRCLE_ENTITY_SECRET;

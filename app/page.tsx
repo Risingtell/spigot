@@ -1,5 +1,5 @@
 import { Console } from "@/components/console";
-import { Gauge, Wallet, DoorClosed, ShieldCheck, Github, Droplets } from "lucide-react";
+import { Gauge, Wallet, DoorClosed, ShieldCheck, Github, Droplets, Fuel } from "lucide-react";
 
 export default function Home() {
   return (
@@ -44,9 +44,10 @@ export default function Home() {
           <div className="mt-6 h-px w-40 flow-line" />
 
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-            An autonomous agent streams a metered service, pays one tick of USDC for each second it holds, and shuts its
-            own gate the moment the next second stops being worth the price. Every tick is a real settlement. No
-            subscription, no human clicking pay.
+            An autonomous agent streams a metered service, prices every second it holds against what that second is
+            worth, and shuts its own gate the moment the answer turns. It settles in USDC on the cadence Arc&apos;s own
+            fee market allows, so the chain never takes more than a few percent of what it moves. No subscription, no
+            human clicking pay.
           </p>
         </div>
       </section>
@@ -57,7 +58,7 @@ export default function Home() {
           <div className="border-b px-5 py-3 sm:px-6">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Gauge className="size-4 text-primary" />
-              Live demo, running the real agent loop in mock mode. Click and watch.
+              The real agent loop, against Arc&apos;s live fee market. Settlement simulated. Click and watch.
             </div>
           </div>
           <div className="p-5 sm:p-6">
@@ -69,7 +70,7 @@ export default function Home() {
       {/* how it works */}
       <section className="mx-auto mt-16 max-w-4xl px-5">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">How it works</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             {
               icon: Wallet,
@@ -78,13 +79,18 @@ export default function Home() {
             },
             {
               icon: Gauge,
-              title: "Pay per tick",
-              body: "Each second it weighs the next chunk's value against its price. Worth it, it settles one USDC tick on Arc.",
+              title: "Decide every second",
+              body: "Each second it weighs what the next slice is worth against what that slice costs. Its own call, on its own signal.",
+            },
+            {
+              icon: Fuel,
+              title: "Settle when it pays",
+              body: "Gas on Arc is USDC, so the agent reads the live fee and settles once the amount owed makes that fee a rounding error.",
             },
             {
               icon: DoorClosed,
               title: "Close the gate",
-              body: "When value drops below cost, or the budget runs out, the agent stops on its own and records why.",
+              body: "When value drops below cost, or the budget runs out, it pays off what it owes, stops on its own, and records why.",
             },
           ].map((s, i) => (
             <div key={s.title} className="group relative rounded-xl border bg-card/40 p-5 transition hover:border-primary/40">
@@ -108,8 +114,10 @@ export default function Home() {
             <a href="https://www.npmjs.com/package/meter402" target="_blank" rel="noreferrer" className="text-accent underline-offset-2 hover:underline">
               meter402
             </a>
-            , an open-source npm package, and publishes a snapshot that never claims more than it settled. Live on Arc,
-            an on-chain verifier re-derives every total straight from the chain.
+            , an open-source npm package, and publishes a snapshot that never claims more than it settled.{" "}
+            <span className="font-mono text-foreground">npm run verify</span> re-derives the fee market and every
+            settled total straight from Arc, with no keys and nothing of ours in the path. The agent also refills its
+            own Arc wallet across chains over CCTP, so a long stream does not end because a human was not watching.
           </p>
         </div>
       </section>
@@ -117,7 +125,15 @@ export default function Home() {
       {/* capability strip */}
       <section className="mx-auto mt-10 max-w-4xl px-5">
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-          {["Arc Testnet", "USDC settlement", "Circle Wallets", "x402 / Gateway", "meter402 SDK"].map((c) => (
+          {[
+            "Arc Testnet",
+            "USDC is the gas",
+            "Circle Wallets",
+            "CCTP top-up",
+            "Bridge Kit",
+            "x402 / Gateway",
+            "meter402 SDK",
+          ].map((c) => (
             <span key={c} className="inline-flex items-center gap-1.5">
               <span className="size-1 rounded-full bg-accent" />
               {c}

@@ -11,16 +11,22 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
     "demo": "tsx examples/demo.ts",
-    "agent": "node --env-file=.env.local --import tsx src/run-live.ts"
+    "verify": "tsx src/verify.ts",
+    "agent": "node --env-file=.env.local --import tsx src/run-live.ts",
+    "topup": "node --env-file=.env.local --import tsx src/run-topup.ts"
   },
   "dependencies": {
+    "@circle-fin/adapter-viem-v2": "^1.14.0",
+    "@circle-fin/bridge-kit": "^1.12.1",
     "@circle-fin/developer-controlled-wallets": "^10.6.0",
     "lucide-react": "^0.577.0",
     "meter402": "^0.1.2",
     "next": "^16.1.6",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "viem": "^2.55.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
@@ -31,5 +37,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }
