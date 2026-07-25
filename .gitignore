@@ -1,7 +1,7 @@
 # dependencies
 node_modules/
 
-# secrets — never commit
+# secrets - never commit
 .env
 .env.local
 .env.*.local
@@ -12,10 +12,13 @@ keys/
 
 # build / cache
 dist/
+.next/
+out/
+.turbo/
 *.tsbuildinfo
 .DS_Store
 
-# internal working docs — not for judges
+# internal working docs - not for judges
 SUBMISSION.md
 VIDEO_SCRIPT.md
 DEMO_SCRIPT.md
