@@ -15,7 +15,7 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | Settlement cost, measured live | about $0.0016 per transfer at 24 gwei |
 | Settlement cadence | derived from that fee, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys |
-| Tests | 18 passing over the rules that move money |
+| Tests | 21 passing over the rules that move money |
 | SDK | built on [meter402](https://www.npmjs.com/package/meter402), published on npm |
 
 Built on [meter402](https://github.com/Risingtell/meter402), the open-source
@@ -48,20 +48,29 @@ So Spigot separates two cadences that naive per-second billing conflates:
 
 At a 5% overhead ceiling, that is a settlement roughly every 31s on a $0.001/sec
 feed, every 0.6s on $0.05/sec inference capacity, and every 0.06s on a $0.50/sec
-GPU. The agent computes this itself, live, per stream. Nothing is lost in between:
-the meter only advances when a settlement commits, so unsettled time rolls forward
-and is paid off before the gate shuts.
+GPU. The agent computes this itself, live, per stream.
+
+That amount is therefore also the smallest **block** of time worth opening, and the
+agent treats it as one. Opening a block commits it to paying for the whole block, so
+it only opens one it can afford outright, and it always stops on a boundary. If the
+stream stops earning its price partway through, the agent stops buying immediately
+and rides out what it already committed to, rather than walking away from time the
+provider delivered. That is what keeps the fee inside the ceiling on every
+settlement, including the last one.
 
 ## What the agent actually decides
 
 ```
-open session ──▶ meter the interval ──▶ worth holding? ──no──▶ pay what is owed, close, record why
-                        ▲                      │yes
-                        │                      ▼
-                        │             worth a chain fee yet?
-                        │                 │no        │yes
-                        └── roll forward ─┘          ▼
-                                            settle on Arc, commit, continue
+open a block ──▶ meter the interval ──▶ worth the next slice? ──no──▶ stop buying
+     ▲                   ▲                        │yes                    │
+     │                   │                        ▼                       │
+     │                   │              block complete? ──no──────────────┤
+     │                   └──── roll forward ──────┘yes                    │
+     │                                            ▼                       │
+     └──── still buying ◀── settle the block on Arc ──▶ stopping? ────────┘
+                                                            │yes
+                                                            ▼
+                                                  close, record why
 ```
 
 The agent carries a policy - a hard USDC budget, a maximum acceptable rate per
@@ -86,7 +95,7 @@ No keys, no wallet, no chain writes:
 npm install
 npm run demo      # an agent holds a stream, batches settlement, stops itself
 npm run verify    # re-derive the fee market and any settled totals from Arc
-npm test          # 18 tests over the rules that move money
+npm test          # 21 tests over the rules that move money
 ```
 
 `npm run verify` is the one to read closely. It takes Arc's gas price live, prices
@@ -94,11 +103,24 @@ one settlement, derives the cadence, and - given an agent address - sums every U
 transfer that agent made to a provider straight from the token's `Transfer` logs.
 None of it comes from Spigot.
 
-Live settlement on Arc, once Circle credentials and a funded wallet are in place
-(see [`.env.example`](./.env.example)):
+To settle for real, the agent needs USDC on Arc. The quick way is a plain key,
+funded from [faucet.circle.com](https://faucet.circle.com):
 
 ```bash
-npm run agent     # same loop, real confirmed USDC transfers on Arc
+SPIGOT_ARC_KEY=0x...            # a key holding USDC on Arc
+SPIGOT_PROVIDER_ADDRESS=0x...   # who gets paid
+npm run agent                   # same loop, real confirmed transfers
+```
+
+Circle developer-controlled wallets work the same way, with
+`CIRCLE_API_KEY` / `CIRCLE_ENTITY_SECRET` / `CIRCLE_WALLET_SET_ID` and
+`SPIGOT_AGENT_WALLET_ID` instead of the key. Either path settles through an
+explicit ERC-20 `transfer` call, so `npm run verify` can re-derive it. See
+[`.env.example`](./.env.example). The hosted console settles live too whenever the
+deployment holds a key, behind a spend cap and a rate limit, and labels which mode
+each run used.
+
+```bash
 npm run topup     # check the Arc balance, bridge in from the reserve chain
 ```
 
@@ -106,8 +128,9 @@ npm run topup     # check the Arc balance, bridge in from the reserve chain
 
 | Spigot flow | Arc / Circle capability |
 | --- | --- |
-| Agent and provider wallets on Arc | Circle developer-controlled wallets (`ARC-TESTNET`) |
+| Agent and provider wallets on Arc | Circle developer-controlled wallets (`ARC-TESTNET`), or a plain Arc key |
 | Per-second USDC settlement, wallet to wallet | USDC on Arc, sub-second finality |
+| Settlement as an explicit ERC-20 call, so it is provable | Circle contract execution, viem on Arc |
 | Settlement cadence priced from the fee market | Arc's stable-fee design, USDC as gas token |
 | Agent refills its own Arc wallet across chains | CCTP v2 via Circle Bridge Kit, Arc domain 26 |
 | Mint on Arc without a signer there | Circle Forwarder (Orbit relayer) |
@@ -125,28 +148,36 @@ SettlementProvider ◀─────  ArcSettlementProvider   settles via Circl
 createEvmVerifier ◀──────  verify.ts         re-derives totals from Arc logs
                            arc-gas.ts        live fee market, settlement economics
                            treasury.ts       CCTP top-up via Bridge Kit
-                           circle-wallet.ts  Circle wallets, payAndConfirm on Arc
+                           circle-wallet.ts  Circle wallets, ERC-20 transfer on Arc
+                           arc-eoa.ts        the same settlement from a plain key
                            arc.ts            Arc constants, 18dp gas to 6dp billing
 ```
 
 The settlement primitive lives in meter402 so any Arc builder can reuse it; Spigot
 is the agent, the policy, the economics, and the Arc binding on top.
 
-## Where this is honest about itself
+## The invariants
 
-- **The hosted demo simulates settlement.** It holds no keys. The agent loop and
-  the fee market on that page are real; the transfers are not. The same loop
-  settles real USDC through `npm run agent`.
-- **The closing settlement can sit under the overhead ceiling.** When an agent
-  stops, it pays off whatever time it already held, even if that amount is small
-  against the fee. Leaving the provider unpaid for delivered seconds would be the
-  worse trade.
-- **The verifier reads ERC-20 `Transfer` logs.** That is what a standard USDC
-  transfer emits on Arc. The first live settlement should be confirmed to appear
-  in `npm run verify` before any settled total is quoted publicly.
-- **Testnet only.** Arc mainnet is not available yet.
-- **The gas figure is a live measurement, not a promise.** It moves with the fee
-  market, which is the entire reason the agent reads it instead of assuming it.
+These hold by construction, and the test suite asserts each one:
+
+- **Every settlement clears the economical floor.** The amount worth settling is
+  also the smallest block of time worth opening, so the agent only opens a block it
+  can pay for outright and always stops on a block boundary. If a stream stops
+  earning its price partway through a block, the agent stops buying at once and
+  rides out what it already committed to. There is no closing fragment, so the
+  overhead ceiling holds on the last settlement as well as the first.
+- **The budget cannot be breached.** A block is only opened if the whole block fits
+  inside what is left. An agent whose budget cannot fund even one worthwhile
+  settlement declines before consuming anything, rather than running up a debt.
+- **A provider is never left holding unpaid delivered time.** Metered time rolls
+  forward until it is settled; the meter only advances on a committed settlement.
+- **Every settlement is re-derivable from the chain.** Both live paths settle with
+  an explicit `transfer(address,uint256)` call on Arc's USDC contract, so each one
+  emits the `Transfer` event that `npm run verify` sums independently.
+- **A failed settlement is never retried.** The transfer may still be in flight, so
+  the agent closes the session on the record instead of risking paying twice.
+- **Nothing is ever claimed that the chain does not show.** Spend is only booked on
+  a confirmed settlement, and the impact snapshot is built from settled events.
 
 ## Tech stack
 

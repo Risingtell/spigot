@@ -10,6 +10,7 @@ interface Settlement {
   cumulativeUsd: number;
   feeSharePct: number;
   txHash: string;
+  explorerUrl?: string;
 }
 interface RunMeta {
   id: string;
@@ -49,6 +50,7 @@ export function Console() {
   const [played, setPlayed] = useState<Settlement[]>([]);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [fee, setFee] = useState<Fee | null>(null);
+  const [mode, setMode] = useState<"live" | "simulated" | null>(null);
 
   // The fee market is read on load so the economics are on screen before anyone
   // presses anything. It is a live call to Arc, not a stored constant.
@@ -78,6 +80,7 @@ export function Console() {
       });
       const data = await res.json();
       setMeta(data.scenario);
+      setMode(data.mode === "live" ? "live" : "simulated");
       if (data.fee) setFee((f) => ({ ...(f ?? {}), ...data.fee }));
       for (const s of data.settlements as Settlement[]) {
         setPlayed((p) => [...p, s]);
@@ -174,6 +177,14 @@ export function Console() {
         </div>
       </div>
 
+      {mode && (
+        <p className="mt-2.5 text-xs text-muted-foreground">
+          {mode === "live"
+            ? "Settling real USDC on Arc Testnet."
+            : "Settling against a simulated provider on this run."}
+        </p>
+      )}
+
       {/* live stat row */}
       <div className="mt-5 grid grid-cols-3 gap-3">
         <Stat label="Settlements" value={String(played.length)} />
@@ -210,7 +221,18 @@ export function Console() {
                 </span>
                 <span className="tabular text-primary">+{usd(t.amountUsd)}</span>
                 <span className="tabular hidden text-muted-foreground sm:inline">fee {t.feeSharePct.toFixed(1)}%</span>
-                <span className="truncate text-xs text-muted-foreground/60">{t.txHash.slice(0, 10)}…</span>
+                {t.explorerUrl ? (
+                  <a
+                    href={t.explorerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate text-xs text-accent underline-offset-2 hover:underline"
+                  >
+                    {t.txHash.slice(0, 10)}…
+                  </a>
+                ) : (
+                  <span className="truncate text-xs text-muted-foreground/60">{t.txHash.slice(0, 10)}…</span>
+                )}
               </li>
             ))}
             {live && (
@@ -242,9 +264,10 @@ export function Console() {
 
       {meta && (
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-          {meta.blurb} Capacity priced at {usd(meta.ratePerSecondUsd)}/sec. Settlement is simulated on this hosted
-          demo, which holds no keys; the fee market above is live, and the same loop settles real USDC on Arc when
-          Circle wallets are wired in.
+          {meta.blurb} Capacity priced at {usd(meta.ratePerSecondUsd)}/sec.{" "}
+          {mode === "live"
+            ? "Every settlement above is a confirmed USDC transfer on Arc Testnet. Follow any hash to the explorer, or re-derive the whole set yourself with npm run verify."
+            : "This run settled against a simulated provider. The loop, the fee market and the cadence are identical to the live path in src/run-live.ts, which moves real USDC on Arc."}
         </p>
       )}
     </div>

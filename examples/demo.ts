@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Spigot end-to-end demo - runs with no keys and no wallet.
  *
  *   npm run demo
@@ -62,7 +62,7 @@ const agent = new StreamingAgent(meter, new MockSettlementProvider(), "agent-alp
   budgetUnits: "600000", //          $0.60 hard cap
   maxRatePerSecondUnits: "100000", // will not touch capacity pricier than $0.10/sec
   objective: "Hold inference capacity only while it is worth more than it costs.",
-  settlement: { costUnits: cost.costUnits, maxOverheadRatio: MAX_OVERHEAD_RATIO },
+  settlement: { costUnits: cost.costUnits, maxOverheadRatio: MAX_OVERHEAD_RATIO, meterMaxTickSeconds: 60 },
 });
 
 // The agent's real-signal decision input: what the next slice is worth to it right

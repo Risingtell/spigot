@@ -16,11 +16,17 @@
  *   - it settles on-chain only when the amount owed is large enough that Arc's
  *     fee is a small share of it, because gas is real money too.
  *
- * Arc prices gas in the same USDC the agent is paying with, so that second
- * cadence is not guesswork - it is read off the live fee market (see
- * `src/arc-gas.ts`). Time metered but not yet settled is never lost: the meter
- * only advances once a tick is committed, so it rolls forward and is paid for
- * before the gate shuts.
+ * Arc prices gas in the same USDC the agent is paying with, so that second cadence
+ * is not guesswork - it is read off the live fee market (see `src/arc-gas.ts`).
+ *
+ * The amount worth settling is therefore also the smallest block of time worth
+ * opening, and the agent treats it that way: opening a block commits it to paying
+ * for the whole block, and it only opens one it can pay for outright. So it always
+ * stops on a block boundary. If the stream stops being worth its price partway
+ * through a block, the agent stops buying immediately and rides out what it already
+ * committed to, rather than walking away from time the provider delivered. Every
+ * settlement it makes is one whole block, which is what keeps the chain fee inside
+ * the ceiling on all of them, including the last.
  */
 
 import { StreamingMeter, type Session, type TickQuote } from "meter402";
@@ -33,6 +39,12 @@ export interface SettlementEconomics {
   costUnits: string;
   /** Ceiling on the chain fee as a share of the value each settlement moves. */
   maxOverheadRatio: number;
+  /**
+   * The meter's `maxTickSeconds`. Supplying it lets the agent reject a stream too
+   * cheap to reach an economical settlement inside one tick, instead of quietly
+   * consuming time the meter has stopped counting.
+   */
+  meterMaxTickSeconds?: number;
 }
 
 export interface AgentPolicy {
@@ -146,11 +158,36 @@ export class StreamingAgent {
       return done("stream rate above ceiling - never opened the gate");
     }
 
+    // A settlement is only worth making at the economical floor, so that floor is
+    // also the smallest block of time worth opening. The agent must be able to
+    // reach it inside one meter tick, or it would keep consuming time the meter has
+    // stopped counting. Catch that as a configuration error rather than let it
+    // become a silent underpayment.
+    if (minSettle > 0n && stream && this.policy.settlement?.meterMaxTickSeconds) {
+      const rate = BigInt(stream.ratePerSecond);
+      const needed = rate > 0n ? Number(minSettle) / Number(rate) : 0;
+      if (needed > this.policy.settlement.meterMaxTickSeconds) {
+        throw new Error(
+          `A settlement worth making on this stream covers ${needed.toFixed(1)}s, but the meter caps a tick at ` +
+            `${this.policy.settlement.meterMaxTickSeconds}s. Raise maxTickSeconds or price the stream higher.`,
+        );
+      }
+    }
+
     const budget = BigInt(this.policy.budgetUnits);
     let accrued = 0n;
     let stalled = 0;
+    // Set once the agent has decided not to open another block, along with why. It
+    // still owes the block it is in, so it rides that one out and stops on the
+    // boundary rather than leaving a fragment behind.
+    let closeReason: string | null = null;
 
-    for (let tick = 1; tick <= maxTicks; tick++) {
+    // The tick limit stops the agent opening new blocks. Finishing the block it
+    // already committed to may take a few ticks more, so the loop is allowed to run
+    // past the limit for that, and no further.
+    const hardCap = maxTicks * 3 + 10;
+
+    for (let tick = 1; tick <= hardCap; tick++) {
       await sleep(tickIntervalMs);
 
       const quote = this.meter.quoteTick(session.id);
@@ -171,10 +208,25 @@ export class StreamingAgent {
         continue;
       }
       stalled = 0;
+
+      // Out of ticks: stop opening blocks. On a boundary that is the end of the run,
+      // and this interval is never ruled on, so it is not counted either.
+      if (tick > maxTicks && closeReason === null) {
+        if (accrued === 0n) return done("objective complete");
+        closeReason = "objective complete";
+      }
+
       state.ticksMetered += 1;
 
-      // Holding this interval must not commit the agent past its own budget.
-      if (state.spent + owed > budget) return done("budget exhausted");
+      // Opening a block commits the agent to the whole block, so it only opens one
+      // it can pay for outright. Mid-block, only what is actually owed matters.
+      const commitment = accrued === 0n && minSettle > owed ? minSettle : owed;
+      if (state.spent + commitment > budget) {
+        // Nothing has been settled and the agent cannot even fund one block: the
+        // budget was never enough for this stream, which is worth saying plainly.
+        const affordable = state.spent > 0n || commitment === owed;
+        return done(affordable ? "budget exhausted" : "budget below the smallest settlement worth making");
+      }
 
       const ctx: TickContext = {
         tick,
@@ -185,14 +237,18 @@ export class StreamingAgent {
         accruedUnits: accrued,
       };
 
-      // Is the next chunk still worth what it costs? The autonomous call, made
-      // against this interval alone, never against the accrued backlog.
-      const value = BigInt(Math.round(await opts.valueSignal(ctx)));
-      if (value < marginal) return done("marginal value below tick cost");
+      // Is the next slice still worth what it costs? The autonomous call, made
+      // against this interval alone, never against the accrued backlog. Once the
+      // answer is no the agent has decided; it does not keep asking.
+      if (closeReason === null) {
+        const value = BigInt(Math.round(await opts.valueSignal(ctx)));
+        if (value < marginal) closeReason = "marginal value below tick cost";
+      }
 
-      // Worth holding. Is it yet worth a chain fee? Below the economical floor
-      // the agent keeps the stream open and lets the amount owed roll forward.
-      if (minSettle > 0n && owed < minSettle) {
+      // Not yet a block worth settling. Keep the stream open and let what is owed
+      // roll forward, whether the agent is still buying or riding out its
+      // commitment. Nothing is lost: the meter has not advanced.
+      if (owed < minSettle) {
         accrued = owed;
         state.pending = quote;
         continue;
@@ -201,6 +257,10 @@ export class StreamingAgent {
       const failure = await this.trySettle(state, quote);
       if (failure) return done(`settlement failed - ${failure}`);
       accrued = 0n;
+
+      // A full block, paid for, on a clean boundary. If the agent stopped wanting
+      // the stream partway through it, this is where it lets go.
+      if (closeReason !== null) return done(closeReason);
     }
 
     return done("objective complete");

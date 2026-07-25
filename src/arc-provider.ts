@@ -11,7 +11,7 @@
  */
 
 import type { SettlementProvider, TickQuote, SettlementResult } from "meter402";
-import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc";
+import { ARC_TESTNET_CAIP2 } from "./arc";
 import { payAndConfirm } from "./circle-wallet";
 
 export class ArcSettlementProvider implements SettlementProvider {
@@ -27,14 +27,13 @@ export class ArcSettlementProvider implements SettlementProvider {
     const to = quote.stream.payTo;
     if (!to) throw new Error(`stream ${quote.stream.id} has no payTo address`);
 
-    const amountUsd = unitsToUsdc(quote.amount);
-    if (amountUsd <= 0) {
-      // A zero-length tick settles nothing; hand back an empty result so the
-      // meter advances without a bogus transfer.
+    if (BigInt(quote.amount) <= 0n) {
+      // Nothing owed settles nothing; hand back an empty result so the meter
+      // advances without a bogus transfer.
       return { txHash: "", explorerUrl: "", network: this.network };
     }
 
-    const { txHash, explorerUrl } = await payAndConfirm({ walletId, to, amountUsd });
+    const { txHash, explorerUrl } = await payAndConfirm({ walletId, to, amountUnits: quote.amount });
     return { txHash, explorerUrl, network: this.network };
   }
 }

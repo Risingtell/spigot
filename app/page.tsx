@@ -58,7 +58,7 @@ export default function Home() {
           <div className="border-b px-5 py-3 sm:px-6">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Gauge className="size-4 text-primary" />
-              The real agent loop, against Arc&apos;s live fee market. Settlement simulated. Click and watch.
+              The real agent loop, against Arc&apos;s live fee market. Click and watch.
             </div>
           </div>
           <div className="p-5 sm:p-6">

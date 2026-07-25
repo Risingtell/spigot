@@ -128,27 +128,63 @@ test("the agent settles fewer times than it meters, without losing time", async 
   assert.equal(result.session.totalPaid, result.spentUnits);
 });
 
-test("every settlement except the closing one clears the economical floor", async () => {
-  const { meter, provider } = harness({ ratePerSecond: "50000" });
+/**
+ * The invariant that makes the overhead ceiling mean something: it has to hold on
+ * every settlement, not just the convenient ones. Each case below ends the stream a
+ * different way - value collapse, budget, running out of ticks - and none of them is
+ * allowed to leave a sub-floor fragment on the chain.
+ */
+for (const c of [
+  { name: "the stream stops being worth its price", stopAt: 4, budget: "600000", ticks: 14 },
+  { name: "the budget runs out", stopAt: Infinity, budget: "70000", ticks: 20 },
+  { name: "the run ends mid-block", stopAt: Infinity, budget: "600000", ticks: 5 },
+]) {
+  test(`every settlement clears the economical floor when ${c.name}`, async () => {
+    const { meter, provider } = harness({ ratePerSecond: "50000" });
+    const agent = new StreamingAgent(meter, provider, "agent", {
+      budgetUnits: c.budget,
+      maxRatePerSecondUnits: "100000",
+      objective: "test",
+      settlement: { costUnits: "1564", maxOverheadRatio: 0.05, meterMaxTickSeconds: 60 },
+    });
+
+    const result = await agent.stream("stream", {
+      valueSignal: (ctx: TickContext) => (ctx.tick >= c.stopAt ? 0 : Number(ctx.marginalUnits) * 4),
+      tickIntervalMs: 100,
+      maxTicks: c.ticks,
+    });
+
+    const floor = minEconomicSettlementUnits("1564", 0.05);
+    assert.ok(result.settlements > 0, "the provider should have been paid");
+    for (const amount of provider.paid) {
+      assert.ok(
+        BigInt(amount) >= floor,
+        `settlement ${amount} is below the floor ${floor} (closed: ${result.closedReason})`,
+      );
+      // Which is the same thing as saying the chain fee stayed inside the ceiling.
+      assert.ok(overheadRatio("1564", amount) <= 0.05);
+    }
+    assert.equal(provider.total().toString(), result.spentUnits);
+  });
+}
+
+test("a stream too cheap to settle inside one meter tick is rejected outright", async () => {
+  // $0.001/sec needs about 31s of stream to be worth settling. A meter that caps a
+  // tick at 10s could never measure that, so this is a setup error, not a runtime
+  // surprise to be discovered halfway through someone's money.
+  const { meter, provider } = harness({ ratePerSecond: "1000", maxTickSeconds: 10 });
   const agent = new StreamingAgent(meter, provider, "agent", {
     budgetUnits: "600000",
     maxRatePerSecondUnits: "100000",
     objective: "test",
-    settlement: { costUnits: "1564", maxOverheadRatio: 0.05 },
+    settlement: { costUnits: "1564", maxOverheadRatio: 0.05, meterMaxTickSeconds: 10 },
   });
 
-  const result = await agent.stream("stream", {
-    valueSignal: (ctx: TickContext) => Number(ctx.marginalUnits) * 2,
-    tickIntervalMs: 100,
-    maxTicks: 12,
-  });
-
-  const floor = minEconomicSettlementUnits("1564", 0.05);
-  const scheduled = provider.paid.slice(0, -1);
-  for (const amount of scheduled) {
-    assert.ok(BigInt(amount) >= floor, `scheduled settlement ${amount} is below the floor ${floor}`);
-  }
-  assert.ok(result.settlements > 0);
+  await assert.rejects(
+    () => agent.stream("stream", { valueSignal: () => 1e9, tickIntervalMs: 50, maxTicks: 3 }),
+    /caps a tick at 10s/,
+  );
+  assert.equal(provider.paid.length, 0);
 });
 
 test("the agent stops itself when the next slice is not worth its price", async () => {
@@ -170,26 +206,28 @@ test("the agent stops itself when the next slice is not worth its price", async 
   assert.equal(result.session.status, "closed");
 });
 
-test("time held before an early stop is still paid for", async () => {
+test("a budget too small for one block never opens the gate", async () => {
+  // An overhead ceiling this tight puts the smallest worthwhile settlement above the
+  // whole budget. The agent will not consume time it cannot pay for, so it declines
+  // before anything is delivered rather than running up a debt it must default on.
   const { meter, provider } = harness({ ratePerSecond: "50000" });
   const agent = new StreamingAgent(meter, provider, "agent", {
     budgetUnits: "600000",
     maxRatePerSecondUnits: "100000",
     objective: "test",
-    // A floor high enough that no scheduled settlement can be reached in the run,
-    // so the only way the provider gets paid is the close-out settlement.
     settlement: { costUnits: "1564", maxOverheadRatio: 0.0005 },
   });
 
   const result = await agent.stream("stream", {
-    valueSignal: (ctx: TickContext) => (ctx.tick >= 3 ? 0 : Number(ctx.marginalUnits) * 2),
-    tickIntervalMs: 100,
-    maxTicks: 10,
+    valueSignal: (ctx: TickContext) => Number(ctx.marginalUnits) * 2,
+    tickIntervalMs: 60,
+    maxTicks: 6,
   });
 
-  assert.equal(result.settlements, 1, "the accrued remainder should be settled on close");
-  assert.ok(BigInt(result.spentUnits) > 0n, "the provider must not be left unpaid for delivered time");
-  assert.equal(provider.total().toString(), result.spentUnits);
+  assert.equal(result.closedReason, "budget below the smallest settlement worth making");
+  assert.equal(result.settlements, 0);
+  assert.equal(result.spentUnits, "0");
+  assert.equal(provider.paid.length, 0);
 });
 
 test("the budget is never exceeded", async () => {

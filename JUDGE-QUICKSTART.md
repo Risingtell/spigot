@@ -20,8 +20,10 @@ loop server-side against that live fee reading:
 | Tight budget | It stops at the hard budget it was given, even though the stream is still valuable |
 
 Watch the counters: the agent rules on far more intervals than it settles, and the
-fee share stays around a few percent of each settlement. Settlement on this hosted
-page is simulated - it holds no keys - and the page says so.
+fee share stays under the 5% ceiling on every settlement, the last one included. The
+page states which mode each run used - live confirmed transfers on Arc when the
+deployment holds a key, with every hash linking to the explorer, or a simulated
+provider when it does not.
 
 ## 2. Verify the claim yourself (2 minutes)
 
@@ -70,7 +72,7 @@ than it settled.
 npm test
 ```
 
-18 tests over the rules that move money: unit conversion between Arc's 18-decimal
+21 tests over the rules that move money: unit conversion between Arc's 18-decimal
 gas view and the 6-decimal billing view, the economical settlement floor, the
 budget invariant, the guarantee that a provider is never left holding unpaid
 delivered time, the refusal to retry a settlement that may still be in flight, and
@@ -82,7 +84,7 @@ the treasury top-up rule.
 | --- | --- |
 | How does the agent decide, and when does it settle? | [`src/agent.ts`](./src/agent.ts) |
 | Where does the settlement cost come from? | [`src/arc-gas.ts`](./src/arc-gas.ts) |
-| How does one tick become real USDC on Arc? | [`src/arc-provider.ts`](./src/arc-provider.ts), [`src/circle-wallet.ts`](./src/circle-wallet.ts) |
+| How does a block become real USDC on Arc? | [`src/arc-eoa.ts`](./src/arc-eoa.ts), [`src/circle-wallet.ts`](./src/circle-wallet.ts) |
 | How does the agent refill itself across chains? | [`src/treasury.ts`](./src/treasury.ts) |
 | How is any of this checkable? | [`src/verify.ts`](./src/verify.ts) |
 

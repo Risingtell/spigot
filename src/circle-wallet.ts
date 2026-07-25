@@ -9,7 +9,7 @@
  */
 
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
-import { ARC_BLOCKCHAIN, USDC_DECIMALS, arcTxUrl } from "./arc";
+import { ARC_BLOCKCHAIN, ARC_TESTNET_USDC, USDC_DECIMALS, arcTxUrl } from "./arc";
 
 const apiKey = process.env.CIRCLE_API_KEY;
 const entitySecret = process.env.CIRCLE_ENTITY_SECRET;
@@ -77,32 +77,42 @@ async function waitForTransaction(id: string, timeoutMs = 45_000): Promise<{ sta
 }
 
 /**
- * Pay `amountUsd` USDC from an agent wallet to a provider address on Arc and wait
- * for the transfer to confirm on-chain. Returns the real tx hash + explorer link.
- * This is one settled tick.
+ * Pay `amountUnits` USDC (smallest units) from an agent wallet to a provider
+ * address on Arc and wait for it to confirm. Returns the real tx hash and explorer
+ * link. This is one settled block of stream time.
+ *
+ * It settles by calling `transfer(address,uint256)` on Arc's USDC contract rather
+ * than issuing a generic token transfer. Both move the same money, but an explicit
+ * ERC-20 call is guaranteed to emit a `Transfer` event, which is what makes the
+ * settlement independently re-derivable from the chain by anyone (see
+ * `src/verify.ts`). Provable beats convenient.
  */
 export async function payAndConfirm(opts: {
   walletId: string;
   to: string;
-  amountUsd: number;
+  amountUnits: string;
 }): Promise<{ txHash: string; explorerUrl: string; state: string }> {
-  const { tokenId, amount } = await getUsdc(opts.walletId);
-  if (!tokenId) throw new Error("No USDC in the agent wallet to settle this tick.");
-  if (opts.amountUsd > amount) throw new Error("Tick amount exceeds the agent's balance.");
+  const units = BigInt(opts.amountUnits);
+  if (units <= 0n) throw new Error("Nothing to settle.");
 
-  const created = await client().createTransaction({
+  const { tokenId, amount } = await getUsdc(opts.walletId);
+  if (!tokenId) throw new Error("No USDC in the agent wallet to settle this block.");
+  const balanceUnits = BigInt(Math.round(amount * 10 ** USDC_DECIMALS));
+  if (units > balanceUnits) throw new Error("Settlement amount exceeds the agent's balance.");
+
+  const created = await client().createContractExecutionTransaction({
     walletId: opts.walletId,
-    tokenId,
-    destinationAddress: opts.to,
-    amount: [opts.amountUsd.toFixed(USDC_DECIMALS)],
+    contractAddress: ARC_TESTNET_USDC,
+    abiFunctionSignature: "transfer(address,uint256)",
+    abiParameters: [opts.to, opts.amountUnits],
     fee: { type: "level", config: { feeLevel: "MEDIUM" } },
   });
   const txId = created.data?.id;
-  if (!txId) throw new Error("Tick settlement could not be initiated.");
+  if (!txId) throw new Error("Settlement could not be initiated.");
 
   const result = await waitForTransaction(txId);
-  if (FAILURE_STATES.has(result.state)) throw new Error(`Tick settlement ${result.state.toLowerCase()}.`);
-  if (!result.txHash) throw new Error("Tick is still confirming - retry on the next tick.");
+  if (FAILURE_STATES.has(result.state)) throw new Error(`Settlement ${result.state.toLowerCase()}.`);
+  if (!result.txHash) throw new Error("Settlement is still confirming.");
 
   return { txHash: result.txHash, explorerUrl: arcTxUrl(result.txHash), state: result.state };
 }
