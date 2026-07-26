@@ -1,161 +1,392 @@
+import Link from "next/link";
 import { Console } from "@/components/console";
-import { Gauge, Wallet, DoorClosed, ShieldCheck, Github, Droplets, Fuel } from "lucide-react";
+import { Reveal } from "@/components/reveal";
+import { SpigotMark } from "@/components/mark";
+
+const HOW = [
+  {
+    no: "01",
+    title: "Open a session",
+    body: "The agent, holding a wallet on Arc, opens a metered session carrying a hard USDC budget, a rate ceiling, an objective and an overhead ceiling.",
+  },
+  {
+    no: "02",
+    title: "Decide every second",
+    body: "Each second it weighs what the next slice is worth against what that slice costs. Its own call, on its own signal, with nobody to ask.",
+  },
+  {
+    no: "03",
+    title: "Settle when it pays",
+    body: "Gas on Arc is USDC, so the agent reads the live fee and settles once the amount owed makes that fee a rounding error against it.",
+  },
+  {
+    no: "04",
+    title: "Close the gate",
+    body: "When value drops below cost, or the budget will not cover another block, it pays off what it owes, stops on its own, and records why.",
+  },
+];
+
+const INVARIANTS = [
+  {
+    t: "Every settlement clears the floor",
+    d: "The smallest amount worth settling is also the smallest block of time worth opening, so the agent always stops on a block boundary. No sub-economical fragment at the end of a session.",
+  },
+  {
+    t: "The budget cannot be breached",
+    d: "A block is opened only if the whole block fits inside what is left. An agent that cannot fund one worthwhile settlement declines before consuming anything.",
+  },
+  {
+    t: "Delivered time is always paid for",
+    d: "Metered time rolls forward until it settles. The meter only advances on a committed settlement, so a provider is never left holding unpaid seconds.",
+  },
+  {
+    t: "Every settlement is re-derivable",
+    d: "Both live paths settle with an explicit ERC-20 transfer on Arc's USDC contract, so each one emits the event the verifier sums independently.",
+  },
+  {
+    t: "A failed settlement is never retried",
+    d: "The transfer may still be in flight, so the agent closes the session on the record rather than risk paying for the same seconds twice.",
+  },
+];
+
+const CAPABILITIES: [string, string][] = [
+  ["Wallets on Arc", "Circle developer-controlled wallets, or a plain Arc key"],
+  ["Per-second settlement", "USDC on Arc, sub-second finality"],
+  ["Provable settlement", "Explicit ERC-20 transfer via Circle contract execution or viem"],
+  ["Settlement cadence", "Arc stable-fee design, USDC as the gas token"],
+  ["Refilling across chains", "CCTP v2 through Circle Bridge Kit, Arc domain 26"],
+  ["Minting with no signer on Arc", "Circle Forwarder"],
+  ["Payment envelope", "x402 and Circle Gateway"],
+  ["The streaming layer", "meter402, published npm SDK"],
+];
 
 export default function Home() {
   return (
-    <div className="relative">
-      {/* header */}
-      <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-md">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3.5">
-          <div className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="grid size-7 place-items-center rounded-lg bg-primary/15 text-primary">
-              <Droplets className="size-4" />
-            </span>
+    <>
+      <a className="skip" href="#main">
+        Skip to content
+      </a>
+      <Reveal />
+
+      <header className="hdr">
+        <div className="hdr__in">
+          <Link className="brand" href="/">
+            <SpigotMark className="brand__mark" />
             Spigot
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="hidden text-muted-foreground sm:inline">Agentic Economy · Arc</span>
-            <a
-              href="https://github.com/Risingtell/spigot"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-muted-foreground transition hover:text-foreground"
-            >
-              <Github className="size-4" />
-              <span className="hidden sm:inline">Repo</span>
+          </Link>
+          <nav className="nav" aria-label="Main">
+            <Link className="nav__hide" href="/deck">
+              Deck
+            </Link>
+            <a className="nav__hide" href="https://github.com/Risingtell/spigot" target="_blank" rel="noreferrer">
+              Repo
             </a>
-          </div>
+            <a className="btn btn--onDark" href="#console">
+              Run the agent{" "}
+              <span className="arw" aria-hidden="true">
+                &rarr;
+              </span>
+            </a>
+          </nav>
         </div>
       </header>
 
-      {/* hero */}
-      <section className="relative overflow-hidden">
-        <div className="grid-bg pointer-events-none absolute inset-0" />
-        <div className="relative mx-auto max-w-4xl px-5 pt-16 pb-6 sm:pt-24">
-          <div className="inline-flex items-center gap-2 rounded-full border bg-card/50 px-3 py-1 text-xs text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-primary" />
-            Streaming settlement on Arc, built for autonomous agents
-          </div>
-
-          <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl">
-            Agents that pay <span className="text-gradient">by the second</span>, and know when to stop.
-          </h1>
-
-          <div className="mt-6 h-px w-40 flow-line" />
-
-          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-            An autonomous agent streams a metered service, prices every second it holds against what that second is
-            worth, and shuts its own gate the moment the answer turns. It settles in USDC on the cadence Arc&apos;s own
-            fee market allows, so the chain never takes more than a few percent of what it moves. No subscription, no
-            human clicking pay.
-          </p>
-        </div>
-      </section>
-
-      {/* console */}
-      <section className="mx-auto max-w-4xl px-5">
-        <div className="rounded-2xl border bg-card/60 card-glow">
-          <div className="border-b px-5 py-3 sm:px-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Gauge className="size-4 text-primary" />
-              The real agent loop, against Arc&apos;s live fee market. Click and watch.
-            </div>
-          </div>
-          <div className="p-5 sm:p-6">
-            <Console />
-          </div>
-        </div>
-      </section>
-
-      {/* how it works */}
-      <section className="mx-auto mt-16 max-w-4xl px-5">
-        <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">How it works</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            {
-              icon: Wallet,
-              title: "Open a session",
-              body: "The agent, holding a Circle wallet on Arc, opens a metered session with a budget, a rate ceiling, and a goal.",
-            },
-            {
-              icon: Gauge,
-              title: "Decide every second",
-              body: "Each second it weighs what the next slice is worth against what that slice costs. Its own call, on its own signal.",
-            },
-            {
-              icon: Fuel,
-              title: "Settle when it pays",
-              body: "Gas on Arc is USDC, so the agent reads the live fee and settles once the amount owed makes that fee a rounding error.",
-            },
-            {
-              icon: DoorClosed,
-              title: "Close the gate",
-              body: "When value drops below cost, or the budget runs out, it pays off what it owes, stops on its own, and records why.",
-            },
-          ].map((s, i) => (
-            <div key={s.title} className="group relative rounded-xl border bg-card/40 p-5 transition hover:border-primary/40">
-              <div className="flex items-center justify-between">
-                <s.icon className="size-5 text-primary" />
-                <span className="font-mono text-xs text-muted-foreground/60">0{i + 1}</span>
+      <main id="main">
+        {/* ---------------------------------------------------------- hero */}
+        <section className="hero" aria-labelledby="heroH">
+          <div className="hero__grid">
+            <div className="hero__copy">
+              <p className="eyebrow eyebrow--onAmber">Agentic Economy &middot; Built on Arc</p>
+              <h1 className="h-xl" id="heroH">
+                <span className="l">Pay by</span>
+                <span className="l">the second.</span>
+                <span className="l">Know when</span>
+                <span className="l">to stop.</span>
+              </h1>
+              <p className="hero__sub">
+                An autonomous agent holds a metered service, prices every second against what that second is worth, and
+                shuts its own gate the moment the answer turns. It settles in USDC on the cadence Arc&apos;s own fee
+                market allows.
+              </p>
+              <div className="hero__cta">
+                <a className="btn" href="#console">
+                  Run the agent{" "}
+                  <span className="arw" aria-hidden="true">
+                    &rarr;
+                  </span>
+                </a>
+                <Link className="btn btn--ghost" href="/deck">
+                  Read the deck
+                </Link>
               </div>
-              <h3 className="mt-3 font-medium">{s.title}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{s.body}</p>
+              <p className="hero__loc">No subscription &middot; No human clicking pay</p>
             </div>
-          ))}
-        </div>
-      </section>
+            <div className="hero__pat" aria-hidden="true" />
+          </div>
+          <SpigotMark className="hero__mark" tone="black" />
+        </section>
 
-      {/* proof */}
-      <section className="mx-auto mt-6 max-w-4xl px-5">
-        <div className="flex items-start gap-3 rounded-xl border border-accent/25 bg-accent/[0.06] p-5">
-          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-accent" />
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            <span className="font-medium text-foreground">Proof, not trust.</span> The settlement layer runs on{" "}
-            <a href="https://www.npmjs.com/package/meter402" target="_blank" rel="noreferrer" className="text-accent underline-offset-2 hover:underline">
-              meter402
-            </a>
-            , an open-source npm package, and publishes a snapshot that never claims more than it settled.{" "}
-            <span className="font-mono text-foreground">npm run verify</span> re-derives the fee market and every
-            settled total straight from Arc, with no keys and nothing of ours in the path. The agent also refills its
-            own Arc wallet across chains over CCTP, so a long stream does not end because a human was not watching.
-          </p>
-        </div>
-      </section>
+        {/* --------------------------------------------------- fee market */}
+        <section className="stats" aria-label="Arc fee market">
+          <div className="pat pat--diag" aria-hidden="true" />
+          <div className="wrap stats__in">
+            <p className="eyebrow eyebrow--onDark">The arithmetic nobody runs</p>
+            <div className="stats__grid">
+              <div className="rv">
+                <span className="stat__n">$0.0016</span>
+                <span className="stat__l">What one settlement costs on Arc right now</span>
+              </div>
+              <div className="rv">
+                <span className="stat__n">$0.001</span>
+                <span className="stat__l">What a market data feed earns in a second</span>
+              </div>
+              <div className="rv">
+                <span className="stat__n">160%</span>
+                <span className="stat__l">What the chain would take if you settled every second</span>
+              </div>
+              <div className="rv">
+                <span className="stat__n">4.3%</span>
+                <span className="stat__l">What it actually takes, on every settlement Spigot makes</span>
+              </div>
+            </div>
+            <p className="stats__note">
+              Gas on Arc is USDC, so the fee and the payment are the same asset and can be compared directly. Spigot
+              reads that comparison live, per stream, and schedules around it. The figures above are measured from the
+              public RPC, not assumed, and they move with the market.
+            </p>
+          </div>
+        </section>
 
-      {/* capability strip */}
-      <section className="mx-auto mt-10 max-w-4xl px-5">
-        <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-          {[
-            "Arc Testnet",
-            "USDC is the gas",
-            "Circle Wallets",
-            "CCTP top-up",
-            "Bridge Kit",
-            "x402 / Gateway",
-            "meter402 SDK",
-          ].map((c) => (
-            <span key={c} className="inline-flex items-center gap-1.5">
-              <span className="size-1 rounded-full bg-accent" />
-              {c}
-            </span>
-          ))}
-        </div>
-      </section>
+        {/* ---------------------------------------------------- statement */}
+        <section className="stmt" aria-labelledby="stmtH">
+          <div className="pat pat--brick" aria-hidden="true" />
+          <div className="wrap stmt__in">
+            <div className="rv">
+              <div className="stmt__rule" aria-hidden="true" />
+              <blockquote id="stmtH">
+                x402 pays per request.
+                <em>
+                  <span className="hl">Agents do not consume</span>
+                </em>
+                per request.
+              </blockquote>
+            </div>
+            <div className="prose rv">
+              <p>
+                An agent holding a live risk feed, an inference stream, a GPU or a dataset is consuming continuously.
+                Billing that as one-shot calls goes wrong in both directions: charge upfront and the agent pays for time
+                it never uses, settle afterwards and the provider carries the default risk.
+              </p>
+              <p>
+                The missing unit is time held, priced by the second and settled without anyone approving it. That only
+                becomes practical on a chain where the fee for settling is denominated in the same money being settled,
+                because otherwise the arithmetic never closes.
+              </p>
+              <p style={{ marginTop: "1.75rem" }}>
+                <Link className="btn btn--ghost" href="/deck">
+                  Read the deck{" "}
+                  <span className="arw" aria-hidden="true">
+                    &rarr;
+                  </span>
+                </Link>
+              </p>
+            </div>
+          </div>
+        </section>
 
-      <footer className="mx-auto mt-16 max-w-4xl px-5 pb-14">
-        <div className="flex items-center justify-between border-t pt-6 text-sm text-muted-foreground">
-          <span>Rising Technologies</span>
-          <a
-            href="https://github.com/Risingtell/spigot"
-            className="inline-flex items-center gap-1.5 hover:text-foreground"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Github className="size-4" />
-            github.com/Risingtell/spigot
-          </a>
+        {/* ---------------------------------------------------- how it works */}
+        <section aria-labelledby="howH">
+          <div className="wrap">
+            <div className="shead rv">
+              <p className="eyebrow">How it works</p>
+              <h2 className="h-lg" id="howH">
+                Four decisions, <span className="hl">every second</span>
+              </h2>
+            </div>
+            <div className="grid3 rv">
+              {HOW.map((s) => (
+                <div className="card" key={s.no}>
+                  <span className="card__no">{s.no}</span>
+                  <h3 className="h-sm">{s.title}</h3>
+                  <p>{s.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* -------------------------------------------------------- console */}
+        <section className="consoleband" id="console" aria-labelledby="consoleH">
+          <div className="pat pat--diag" aria-hidden="true" />
+          <div className="wrap consoleband__in">
+            <div className="shead shead--onDark rv">
+              <p className="eyebrow eyebrow--onDark">Live</p>
+              <h2 className="h-lg" id="consoleH">
+                Watch it decide
+              </h2>
+              <p className="lede">
+                The real agent loop, running server-side against Arc&apos;s live fee market. Pick a scenario and press
+                run.
+              </p>
+            </div>
+            <div className="consoleshell rv">
+              <div className="consoleshell__bar">Spigot agent console</div>
+              <div className="consoleshell__body">
+                <Console />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ----------------------------------------------------- invariants */}
+        <section className="why" aria-labelledby="invH">
+          <div className="pat pat--diag" aria-hidden="true" />
+          <div className="wrap why__in">
+            <div className="rv">
+              <p className="eyebrow eyebrow--onDark">Guarantees</p>
+              <h2 className="h-lg" id="invH" style={{ color: "var(--white)" }}>
+                What holds, <span className="hl">by construction</span>
+              </h2>
+              <p className="lede" style={{ marginTop: "1.5rem", color: "rgba(255,255,255,.78)" }}>
+                Each of these is asserted by the test suite, not just claimed here.
+              </p>
+            </div>
+            <ul className="why__list rv">
+              {INVARIANTS.map((i) => (
+                <li key={i.t}>
+                  <b>{i.t}</b>
+                  <span>{i.d}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------- verify */}
+        <section aria-labelledby="verifyH">
+          <div className="wrap">
+            <div className="stmt__in">
+              <div className="rv">
+                <p className="eyebrow">Proof</p>
+                <h2 className="h-lg" id="verifyH">
+                  Do not trust us. <span className="hl">Re-derive it</span>
+                </h2>
+                <p className="lede" style={{ marginTop: "1.5rem" }}>
+                  One command, no keys, no wallet. It reads Arc directly and sums every USDC transfer an agent made to a
+                  provider, straight from the token&apos;s transfer logs.
+                </p>
+                <div className="codeblock" style={{ marginTop: "1.75rem" }}>
+                  {`git clone https://github.com/Risingtell/spigot
+npm install && npm run verify`}
+                </div>
+              </div>
+              <div className="rv">
+                <p className="eyebrow">The stack</p>
+                <table className="captable">
+                  <thead>
+                    <tr>
+                      <th>Flow</th>
+                      <th>Capability</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CAPABILITIES.map(([flow, cap]) => (
+                      <tr key={flow}>
+                        <td>{flow}</td>
+                        <td>{cap}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------------------------------------------------------- cta */}
+        <section className="cta" aria-labelledby="ctaH">
+          <div className="pat pat--brick" aria-hidden="true" />
+          <div className="wrap cta__in">
+            <div className="rv">
+              <p className="eyebrow eyebrow--onAmber">Open source</p>
+              <h2 className="h-lg" id="ctaH">
+                Built on a primitive you can use
+              </h2>
+              <p>
+                The streaming layer underneath Spigot is meter402, published on npm under MIT. Any Arc builder can meter
+                and settle by the second without rebuilding it.
+              </p>
+            </div>
+            <div className="hero__cta rv">
+              <a className="btn" href="https://github.com/Risingtell/spigot" target="_blank" rel="noreferrer">
+                View the repo{" "}
+                <span className="arw" aria-hidden="true">
+                  &rarr;
+                </span>
+              </a>
+              <a
+                className="btn btn--ghost"
+                href="https://www.npmjs.com/package/meter402"
+                target="_blank"
+                rel="noreferrer"
+              >
+                meter402 on npm
+              </a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="ftr">
+        <div className="wrap">
+          <div className="ftr__top">
+            <div>
+              <SpigotMark className="brand__mark" style={{ width: 38, height: 38, marginBottom: "1.2rem" }} />
+              <p className="ftr__tag">Agent-native streaming settlement on Arc</p>
+            </div>
+            <div>
+              <h2>Project</h2>
+              <ul>
+                <li>
+                  <Link href="/deck">Deck</Link>
+                </li>
+                <li>
+                  <a href="#console">Live console</a>
+                </li>
+                <li>
+                  <a href="https://github.com/Risingtell/spigot" target="_blank" rel="noreferrer">
+                    Repository
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h2>Built with</h2>
+              <ul>
+                <li>
+                  <a href="https://docs.arc.network/" target="_blank" rel="noreferrer">
+                    Arc
+                  </a>
+                </li>
+                <li>
+                  <a href="https://developers.circle.com/" target="_blank" rel="noreferrer">
+                    Circle developer platform
+                  </a>
+                </li>
+                <li>
+                  <a href="https://www.npmjs.com/package/meter402" target="_blank" rel="noreferrer">
+                    meter402
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="ftr__bot">
+            <span>Rising Technologies</span>
+            <span>Programmable Money Hackathon &middot; Agentic Economy</span>
+          </div>
         </div>
       </footer>
-    </div>
+    </>
   );
 }

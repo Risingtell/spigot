@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Play, LoaderCircle, DoorClosed, Radio, Fuel } from "lucide-react";
 
 interface Settlement {
   n: number;
@@ -101,27 +100,25 @@ export function Console() {
   const started = played.length > 0 || live;
 
   return (
-    <div>
+    <div className="text-[color:hsl(var(--foreground))]">
       {/* live fee market */}
-      <div className="mb-5 rounded-xl border bg-background/40 p-3.5">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Fuel className="size-3.5" />
-          <span>Arc fee market, read live from the public RPC</span>
-        </div>
+      <div className="border border-white/15 bg-white/[0.03] p-4">
+        <p className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-white/50">
+          Arc fee market, read live from the public RPC
+        </p>
         {fee ? (
           <>
-            <div className="mt-2.5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Stat label="Gas price" value={`${fee.gasPriceGwei.toFixed(2)} gwei`} />
-              <Stat label="One settlement costs" value={usd(fee.settlementCostUsd)} />
-              <Stat label="Worth settling above" value={usd(fee.minSettlementUsd)} />
+            <div className="mt-3 grid grid-cols-2 gap-px bg-white/10 sm:grid-cols-3">
+              <Tile label="Gas price" value={`${fee.gasPriceGwei.toFixed(2)} gwei`} />
+              <Tile label="One settlement" value={usd(fee.settlementCostUsd)} />
+              <Tile label="Worth settling above" value={usd(fee.minSettlementUsd)} />
             </div>
             {fee.cadence && fee.cadence.length > 0 && (
-              <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
-                Gas on Arc is USDC, so the fee and the payment are the same asset and the agent can schedule around
-                it. At this price it settles about every{" "}
+              <p className="mt-3 text-[0.82rem] leading-relaxed text-white/60">
+                At this price it settles about every{" "}
                 {fee.cadence.map((c, i, all) => (
                   <span key={c.label}>
-                    <span className="text-foreground">{c.settleEverySeconds.toFixed(1)}s</span> on a{" "}
+                    <span className="text-white">{c.settleEverySeconds.toFixed(1)}s</span> on a{" "}
                     {usd(c.ratePerSecondUsd)}/sec {c.label}
                     {i < all.length - 1 ? ", " : ". "}
                   </span>
@@ -131,54 +128,52 @@ export function Console() {
             )}
           </>
         ) : (
-          <p className="mt-2 text-xs text-muted-foreground">Reading Arc.</p>
+          <p className="mt-2 text-[0.82rem] text-white/50">Reading Arc.</p>
         )}
       </div>
 
       {/* scenario picker */}
-      <div className="flex flex-wrap gap-2">
+      <div className="mt-6 flex flex-wrap gap-2">
         {SCENARIOS.map((s) => (
           <button
             key={s.id}
             onClick={() => setScenario(s.id)}
             disabled={live}
-            className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
+            className={`border px-4 py-2 text-[0.68rem] font-bold uppercase tracking-[0.16em] transition disabled:opacity-50 ${
               scenario === s.id
-                ? "border-primary bg-primary/15 text-primary"
-                : "text-muted-foreground hover:border-primary/40 hover:text-foreground"
-            } disabled:opacity-50`}
+                ? "border-[color:var(--amber)] bg-[color:var(--amber)] text-black"
+                : "border-white/25 text-white/70 hover:border-white/60 hover:text-white"
+            }`}
           >
             {s.label}
           </button>
         ))}
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-4">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
         <button
           onClick={run}
           disabled={live}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
+          className="inline-flex items-center gap-2 border-2 border-[color:var(--amber)] bg-[color:var(--amber)] px-7 py-3.5 text-[0.78rem] font-bold uppercase tracking-[0.16em] text-black transition hover:bg-white hover:border-white disabled:opacity-60"
         >
-          {live ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
           {live ? "Agent is streaming" : "Run the agent"}
         </button>
 
         <div
-          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
+          className={`inline-flex items-center gap-2 px-3 py-1.5 text-[0.66rem] font-bold uppercase tracking-[0.2em] ${
             live
-              ? "bg-primary/15 text-primary animate-live"
+              ? "bg-[color:var(--amber)] text-black animate-live"
               : status === "done"
-                ? "bg-destructive/15 text-destructive"
-                : "bg-muted text-muted-foreground"
+                ? "border border-white/30 text-white/70"
+                : "border border-white/15 text-white/40"
           }`}
         >
-          {live ? <Radio className="size-3.5" /> : status === "done" ? <DoorClosed className="size-3.5" /> : null}
-          {live ? "GATE OPEN" : status === "done" ? "GATE CLOSED" : "IDLE"}
+          {live ? "Gate open" : status === "done" ? "Gate closed" : "Idle"}
         </div>
       </div>
 
       {mode && (
-        <p className="mt-2.5 text-xs text-muted-foreground">
+        <p className="mt-3 text-[0.8rem] text-white/55">
           {mode === "live"
             ? "Settling real USDC on Arc Testnet."
             : "Settling against a simulated provider on this run."}
@@ -186,58 +181,61 @@ export function Console() {
       )}
 
       {/* live stat row */}
-      <div className="mt-5 grid grid-cols-3 gap-3">
-        <Stat label="Settlements" value={String(played.length)} />
-        <Stat label="Total settled" value={usd(spent)} />
-        <Stat label="Time held" value={`${seconds.toFixed(2)}s`} />
+      <div className="mt-5 grid grid-cols-3 gap-px bg-white/10">
+        <Tile label="Settlements" value={String(played.length)} />
+        <Tile label="Total settled" value={usd(spent)} />
+        <Tile label="Time held" value={`${seconds.toFixed(2)}s`} />
       </div>
 
       {/* budget meter */}
-      <div className="mt-4">
-        <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
+      <div className="mt-5">
+        <div className="mb-2 flex justify-between text-[0.66rem] font-bold uppercase tracking-[0.18em] text-white/50">
           <span>Agent budget</span>
-          <span className="tabular">
+          <span className="tabular font-mono tracking-normal">
             {usd(spent)} of {usd(budget)}
           </span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+        <div className="h-1.5 overflow-hidden bg-white/12">
+          <div
+            className="h-full bg-[color:var(--amber)] transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
         </div>
       </div>
 
       {/* settlement log */}
-      <div className="mt-4 min-h-[10rem] rounded-xl border bg-background/50 p-3 font-mono text-sm">
+      <div className="mt-5 min-h-[11rem] border border-white/15 bg-black/40 p-4 font-mono text-[0.85rem]">
         {!started ? (
-          <p className="px-1 py-8 text-center text-muted-foreground">
+          <p className="px-1 py-10 text-center text-white/40">
             Pick a scenario and run the agent. Each row is one settlement, covering every second the agent held since
             the last one.
           </p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-1.5">
             {played.map((t) => (
-              <li key={t.n} className="animate-tick flex items-center justify-between gap-3 px-1">
-                <span className="text-muted-foreground">
+              <li key={t.n} className="animate-tick flex items-center justify-between gap-3">
+                <span className="text-white/45">
                   {String(t.n).padStart(2, "0")} · {t.seconds.toFixed(2)}s held
                 </span>
-                <span className="tabular text-primary">+{usd(t.amountUsd)}</span>
-                <span className="tabular hidden text-muted-foreground sm:inline">fee {t.feeSharePct.toFixed(1)}%</span>
+                <span className="tabular text-[color:var(--amber)]">+{usd(t.amountUsd)}</span>
+                <span className="tabular hidden text-white/45 sm:inline">fee {t.feeSharePct.toFixed(1)}%</span>
                 {t.explorerUrl ? (
                   <a
                     href={t.explorerUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="truncate text-xs text-accent underline-offset-2 hover:underline"
+                    className="truncate text-xs text-[color:var(--green)] underline-offset-2 hover:underline"
                   >
                     {t.txHash.slice(0, 10)}…
                   </a>
                 ) : (
-                  <span className="truncate text-xs text-muted-foreground/60">{t.txHash.slice(0, 10)}…</span>
+                  <span className="truncate text-xs text-white/30">{t.txHash.slice(0, 10)}…</span>
                 )}
               </li>
             ))}
             {live && (
-              <li className="flex items-center gap-2 px-1 py-1 text-muted-foreground/70">
-                <span className="inline-block size-1.5 rounded-full bg-primary animate-drip" />
+              <li className="flex items-center gap-2 py-1 text-white/45">
+                <span className="inline-block size-1.5 bg-[color:var(--amber)] animate-drip" />
                 metering the next second…
               </li>
             )}
@@ -247,38 +245,40 @@ export function Console() {
 
       {/* decision */}
       {decision && (
-        <div className="animate-tick mt-4 rounded-xl border border-destructive/40 bg-destructive/10 p-4">
-          <p className="text-sm">
-            <span className="font-medium text-destructive">Agent closed its own gate</span> after ruling on{" "}
-            {decision.ticksMetered} {decision.ticksMetered === 1 ? "interval" : "intervals"} and settling{" "}
-            {decision.settlements} {decision.settlements === 1 ? "time" : "times"}.
+        <div className="animate-tick mt-5 border-l-4 border-[color:var(--amber)] bg-white/[0.04] p-5">
+          <p className="text-[0.95rem]">
+            <span className="font-bold uppercase tracking-[0.06em] text-[color:var(--amber)]">
+              Agent closed its own gate
+            </span>{" "}
+            after ruling on {decision.ticksMetered} {decision.ticksMetered === 1 ? "interval" : "intervals"} and
+            settling {decision.settlements} {decision.settlements === 1 ? "time" : "times"}.
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Reason: <span className="text-foreground">{decision.reason}</span>. Paid{" "}
-            <span className="tabular text-foreground">{usd(decision.spentUsd)}</span>, of which Arc took{" "}
-            <span className="tabular text-foreground">{decision.feeSharePct.toFixed(1)}%</span> in fees. The rest of the
-            budget stays with the agent. No human in the loop.
+          <p className="mt-2 text-[0.9rem] leading-relaxed text-white/65">
+            Reason: <span className="text-white">{decision.reason}</span>. Paid{" "}
+            <span className="tabular font-mono text-white">{usd(decision.spentUsd)}</span>, of which Arc took{" "}
+            <span className="tabular font-mono text-white">{decision.feeSharePct.toFixed(1)}%</span> in fees. The rest
+            of the budget stays with the agent. No human in the loop.
           </p>
         </div>
       )}
 
       {meta && (
-        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-4 text-[0.8rem] leading-relaxed text-white/45">
           {meta.blurb} Capacity priced at {usd(meta.ratePerSecondUsd)}/sec.{" "}
           {mode === "live"
-            ? "Every settlement above is a confirmed USDC transfer on Arc Testnet. Follow any hash to the explorer, or re-derive the whole set yourself with npm run verify."
-            : "This run settled against a simulated provider. The loop, the fee market and the cadence are identical to the live path in src/run-live.ts, which moves real USDC on Arc."}
+            ? "Every settlement above is a confirmed USDC transfer on Arc Testnet. Follow any hash to the explorer, or re-derive the whole set with npm run verify."
+            : "The loop, the fee market and the cadence are identical to the live path in src/run-live.ts, which moves real USDC on Arc."}
         </p>
       )}
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border bg-background/40 px-3 py-2.5">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="tabular mt-0.5 font-mono text-base text-foreground">{value}</div>
+    <div className="bg-black/40 px-4 py-3">
+      <div className="text-[0.6rem] font-bold uppercase tracking-[0.2em] text-white/45">{label}</div>
+      <div className="tabular mt-1 font-mono text-[1.05rem] text-white">{value}</div>
     </div>
   );
 }
