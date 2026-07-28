@@ -30,29 +30,84 @@ import {
   overheadRatio,
 } from "./arc-gas";
 
-/** Blocks to scan back from the chain head when no explicit window is given. */
-const DEFAULT_LOOKBACK_BLOCKS = 200_000;
+/**
+ * Spigot's own agent and provider on Arc, so `npm run verify` proves something
+ * real from a cold clone with nothing configured. Both are public addresses; point
+ * the script at your own by setting SPIGOT_AGENT_ADDRESS.
+ */
+const SPIGOT_AGENT = "0x201EE872d4b1a3c06589032F682004a09ddB6aBA";
+const SPIGOT_PROVIDER = "0x9379Ec21C3c199C83145dcD377955E8E04BBC200";
+
+/**
+ * The block Spigot's first live settlement landed in. The scan is anchored here
+ * rather than sliding back from the head, so the window never drifts past the
+ * history it is meant to prove. Override with SPIGOT_FROM_BLOCK for another agent.
+ */
+const GENESIS_BLOCK = 54_141_800;
+
+/** Arc's public RPC caps a single eth_getLogs range, and rate-limits bursts. */
+const CHUNK_SIZE = 10_000;
+const PACE_MS = 120;
+
 /** The reference stream price used to express the cadence in seconds. */
 const REFERENCE_RATE_PER_SECOND = "1000"; // $0.001/sec
 const MAX_OVERHEAD_RATIO = 0.05;
 
 const rpcUrl = process.env.SPIGOT_RPC_URL ?? ARC_TESTNET_RPC;
-const agentAddress = process.env.SPIGOT_AGENT_ADDRESS;
-const providerAddress = process.env.SPIGOT_PROVIDER_ADDRESS;
+const agentAddress = process.env.SPIGOT_AGENT_ADDRESS ?? SPIGOT_AGENT;
+const providerAddress = process.env.SPIGOT_PROVIDER_ADDRESS ?? SPIGOT_PROVIDER;
 const impactUrl = process.env.SPIGOT_IMPACT_URL;
 
 const usd = (units: string | bigint) => `$${unitsToUsdc(units.toString()).toFixed(6)}`;
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * A JSON-RPC transport that survives a public endpoint. Scanning a log range takes
+ * many sequential calls and Arc's public RPC rate-limits a burst of them with a
+ * 429, which killed the first live run of this script. Back off and retry rather
+ * than failing the whole verification on one throttled request.
+ */
+async function call(method: string, params: unknown[]): Promise<unknown> {
+  const MAX_ATTEMPTS = 6;
+  for (let attempt = 1; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      });
+    } catch (err) {
+      if (attempt >= MAX_ATTEMPTS) throw err;
+      await sleep(400 * 2 ** (attempt - 1));
+      continue;
+    }
+
+    // 429 is throttling and 5xx is transient; both are worth waiting out.
+    if ((res.status === 429 || res.status >= 500) && attempt < MAX_ATTEMPTS) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 400 * 2 ** (attempt - 1);
+      await sleep(wait);
+      continue;
+    }
+    if (!res.ok) throw new Error(`Arc RPC ${method} returned ${res.status}`);
+
+    const body = (await res.json()) as { result?: unknown; error?: { message?: string } };
+    if (body.error) throw new Error(body.error.message ?? `Arc RPC ${method} failed`);
+    return body.result ?? null;
+  }
+}
+
+/** Paced transport handed to meter402's verifier, so its chunked scan behaves. */
+const pacedRpc = async (method: string, params: unknown[]): Promise<unknown> => {
+  const result = await call(method, params);
+  if (method === "eth_getLogs") await sleep(PACE_MS);
+  return result;
+};
+
 async function rpc(method: string, params: unknown[]): Promise<string> {
-  const res = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  if (!res.ok) throw new Error(`Arc RPC ${method} returned ${res.status}`);
-  const body = (await res.json()) as { result?: string; error?: { message?: string } };
-  if (body.error) throw new Error(body.error.message ?? `Arc RPC ${method} failed`);
-  return body.result ?? "0x0";
+  return ((await call(method, params)) as string) ?? "0x0";
 }
 
 async function main(): Promise<void> {
@@ -85,25 +140,15 @@ async function main(): Promise<void> {
   // 2. The settlements, re-derived from the token ledger
   // -----------------------------------------------------------------------
 
-  if (!agentAddress) {
-    console.log("Settlements");
-    console.log("  No agent address supplied, so there is nothing on-chain to re-derive yet.");
-    console.log("  Set SPIGOT_AGENT_ADDRESS to the agent's Arc address and run this again;");
-    console.log("  every USDC transfer it made to a provider will be summed from Arc's logs.");
-    console.log("\n  Spigot claims no settled totals it cannot show here.");
-    return;
-  }
-
-  const fromBlock = process.env.SPIGOT_FROM_BLOCK
-    ? Number(process.env.SPIGOT_FROM_BLOCK)
-    : Math.max(0, head - DEFAULT_LOOKBACK_BLOCKS);
+  const fromBlock = process.env.SPIGOT_FROM_BLOCK ? Number(process.env.SPIGOT_FROM_BLOCK) : GENESIS_BLOCK;
 
   const verifier = createEvmVerifier({
     network: ARC_TESTNET_CAIP2,
     token: ARC_TESTNET_USDC,
     agents: [agentAddress],
     providerNames: providerAddress ? { [providerAddress.toLowerCase()]: "provider treasury" } : undefined,
-    rpcUrl,
+    rpc: pacedRpc,
+    chunkSize: CHUNK_SIZE,
     fromBlock,
     toBlock: head,
   });

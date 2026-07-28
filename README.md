@@ -12,11 +12,16 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | | |
 | --- | --- |
 | Chain | Arc Testnet (5042002), USDC as the gas token |
-| Settlement cost, measured live | about $0.0016 per transfer at 24 gwei |
-| Settlement cadence | derived from that fee, not hardcoded |
-| Verification | `npm run verify` re-derives everything from Arc, no keys |
+| Settled on-chain | real USDC transfers, re-derivable from the token ledger |
+| Chain fee share | 1.14% of each settlement on the live runs, against a 5% ceiling |
+| Settlement cadence | derived from the live fee market, not hardcoded |
+| Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
 | Tests | 21 passing over the rules that move money |
 | SDK | built on [meter402](https://www.npmjs.com/package/meter402), published on npm |
+
+Run `npm run verify` on a fresh clone and it will re-derive Spigot's own settlements
+straight from Arc, with nothing configured. The totals it prints are not read from
+this repo or from any server we control.
 
 Built on [meter402](https://github.com/Risingtell/meter402), the open-source
 per-second settlement primitive this project consumes as a published npm package.
