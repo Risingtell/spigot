@@ -129,11 +129,37 @@ each run used.
 npm run topup     # check the Arc balance, bridge in from the reserve chain
 ```
 
+### The gas-free rail
+
+The direct path above broadcasts a transaction per settlement, which is why the
+agent batches blocks up to roughly three cents before settling is worth the gas.
+Circle Nanopayments removes that constraint entirely: the agent signs off-chain,
+Gateway credits the provider instantly, and Circle batches the on-chain settlement
+across thousands of payments.
+
+```bash
+npm run dev       # the provider: an x402-gated metered stream
+npm run nano      # the agent: deposits into Gateway, then buys blocks gas free
+```
+
+Same agent, same policy, different rail. On this one it settles every tick at a
+fraction of a cent, and the response body to each payment **is** the next chunk of
+the stream, so the gate is the payment rather than something layered on top of it.
+
+The value signal is real market data. The agent watches BTC trade flow from the
+Coinbase exchange ticker and keeps buying only while the market is active enough
+to be worth the price. Spot price turned out to be useless at this cadence, with
+eight of nine one-second samples unchanged, so the agent rules on trades per
+second instead, taken from the ticker's monotonic trade id.
+
 ## Capability map
 
 | Spigot flow | Arc / Circle capability |
 | --- | --- |
 | Agent and provider wallets on Arc | Circle developer-controlled wallets (`ARC-TESTNET`), or a plain Arc key |
+| Gas-free sub-cent settlement | Circle Nanopayments over Gateway, `@circle-fin/x402-batching` |
+| Selling a metered stream to an agent | x402 402 challenge priced per block, settled by `BatchFacilitatorClient` |
+| The agent's decision input | live BTC trade flow, Coinbase exchange ticker |
 | Per-second USDC settlement, wallet to wallet | USDC on Arc, sub-second finality |
 | Settlement as an explicit ERC-20 call, so it is provable | Circle contract execution, viem on Arc |
 | Settlement cadence priced from the fee market | Arc's stable-fee design, USDC as gas token |
