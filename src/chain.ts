@@ -26,9 +26,21 @@ export const SPIGOT_PROVIDER = "0x9379Ec21C3c199C83145dcD377955E8E04BBC200";
  */
 export const GENESIS_BLOCK = 54_141_800;
 
-/** Arc caps a single eth_getLogs range and rate-limits bursts of them. */
-const CHUNK_SIZE = 10_000;
+/**
+ * Arc rejects any eth_getLogs range wider than 10,000 blocks outright, with
+ * "eth_getLogs is limited to a 10,000 range". Stay just under it.
+ */
+const CHUNK_SIZE = 9_000;
 const PACE_MS = 120;
+
+/**
+ * Arc produces roughly 130,000 blocks a day, so a scan anchored at the first
+ * settlement grows by about fourteen chunks daily and will eventually outlast any
+ * request timeout. The CLI can afford the full history; a serverless handler
+ * cannot, so callers bound it and report the window they actually covered rather
+ * than implying they read everything.
+ */
+export const BLOCKS_PER_CHUNK = CHUNK_SIZE;
 
 export const rpcUrl = process.env.SPIGOT_RPC_URL ?? ARC_TESTNET_RPC;
 export const agentAddress = process.env.SPIGOT_AGENT_ADDRESS ?? SPIGOT_AGENT;
@@ -137,7 +149,13 @@ export function settlementsToProvider(perProvider: Record<string, { count: numbe
 }
 
 /** A verifier over Arc's USDC ledger for one or more agent addresses. */
-export function arcVerifier(opts: { agents?: string[]; fromBlock?: number; toBlock: number }): VerifierAdapter {
+export function arcVerifier(opts: {
+  agents?: string[];
+  fromBlock?: number;
+  toBlock: number;
+  /** Cap the scan to this many chunks back from the head. Omit to scan from genesis. */
+  maxChunks?: number;
+}): VerifierAdapter {
   return createEvmVerifier({
     network: ARC_TESTNET_CAIP2,
     token: ARC_TESTNET_USDC,
@@ -145,7 +163,16 @@ export function arcVerifier(opts: { agents?: string[]; fromBlock?: number; toBlo
     providerNames: { [providerAddress.toLowerCase()]: "provider treasury" },
     rpc: pacedRpc,
     chunkSize: CHUNK_SIZE,
-    fromBlock: opts.fromBlock ?? (process.env.SPIGOT_FROM_BLOCK ? Number(process.env.SPIGOT_FROM_BLOCK) : GENESIS_BLOCK),
+    fromBlock: resolveFromBlock(opts),
     toBlock: opts.toBlock,
   });
+}
+
+/** The first block a scan will actually read, honouring any chunk budget. */
+export function resolveFromBlock(opts: { fromBlock?: number; toBlock: number; maxChunks?: number }): number {
+  const anchored =
+    opts.fromBlock ?? (process.env.SPIGOT_FROM_BLOCK ? Number(process.env.SPIGOT_FROM_BLOCK) : GENESIS_BLOCK);
+  if (!opts.maxChunks) return anchored;
+  const bounded = opts.toBlock - opts.maxChunks * CHUNK_SIZE;
+  return Math.max(anchored, bounded);
 }

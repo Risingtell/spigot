@@ -15,7 +15,7 @@
 
 import { GatewayClient } from "@circle-fin/x402-batching/client";
 import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc";
-import { agentAddress, arcVerifier, headBlock, providerAddress, settlementsToProvider } from "./chain";
+import { agentAddress, arcVerifier, headBlock, providerAddress, resolveFromBlock, settlementsToProvider } from "./chain";
 import { GATEWAY_CHAIN } from "./nano";
 import { withRetry } from "./retry";
 
@@ -53,6 +53,7 @@ export interface Impact {
     secondsStreamed: number;
   };
   perProvider: Record<string, { count: number; total: string }>;
+  scannedFromBlock: number;
   scannedToBlock: number;
   builtAt: string;
   /** Anything that could not be read, named rather than silently zeroed. */
@@ -72,8 +73,13 @@ const empty = (source: string, note: string): ImpactSource => ({
  * transfer from the agent to a non-agent, which excludes funding the wallet and
  * excludes the Gateway deposit.
  */
-async function fromArc(toBlock: number): Promise<{ result: ImpactSource; perProvider: Impact["perProvider"] }> {
-  const totals = await arcVerifier({ toBlock }).reDeriveTotals();
+const MAX_CHUNKS = 6; // about 54,000 blocks, comfortably inside a request timeout
+
+async function fromArc(
+  toBlock: number,
+): Promise<{ result: ImpactSource; perProvider: Impact["perProvider"]; fromBlock: number }> {
+  const fromBlock = resolveFromBlock({ toBlock, maxChunks: MAX_CHUNKS });
+  const totals = await arcVerifier({ toBlock, fromBlock }).reDeriveTotals();
   const paid = settlementsToProvider(totals.perProvider);
   const funding = paid.otherOutflows.reduce((n, o) => n + o.count, 0);
 
@@ -84,12 +90,15 @@ async function fromArc(toBlock: number): Promise<{ result: ImpactSource; perProv
       totalUsd: unitsToUsdc(paid.totalUnits),
       source: "Arc USDC transfer log",
       note:
-        "Transfers that reached the provider. Re-derivable with npm run verify." +
+        `Transfers that reached the provider, over blocks ${fromBlock} to ${toBlock}. ` +
+        "Arc caps a log query at 10,000 blocks and produces about 130,000 a day, so this feed reads a recent window; " +
+        "npm run verify scans the full history from the first settlement." +
         (funding
           ? ` ${funding} further transfer(s) left the agent to fund its Circle Gateway balance; those are movement, not revenue, and are excluded.`
           : ""),
     },
     perProvider: totals.perProvider,
+    fromBlock,
   };
 }
 
@@ -135,10 +144,12 @@ export async function buildImpact(): Promise<Impact> {
 
   let onChain = empty("Arc USDC transfer log", "Could not be read.");
   let perProvider: Impact["perProvider"] = {};
+  let scannedFromBlock = toBlock;
   try {
     const arc = await fromArc(toBlock);
     onChain = arc.result;
     perProvider = arc.perProvider;
+    scannedFromBlock = arc.fromBlock;
   } catch (err) {
     unavailable.push(`Arc log scan: ${(err as Error).message}`);
   }
@@ -173,6 +184,7 @@ export async function buildImpact(): Promise<Impact> {
       secondsStreamed: 0,
     },
     perProvider,
+    scannedFromBlock,
     scannedToBlock: toBlock,
     builtAt: new Date().toISOString(),
     unavailable,
