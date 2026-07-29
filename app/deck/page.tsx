@@ -3,8 +3,8 @@ import { Reveal } from "@/components/reveal";
 import { SpigotMark } from "@/components/mark";
 
 export const metadata = {
-  title: "Spigot deck, agent-native streaming settlement on Arc",
-  description: "The pitch behind Spigot, in ten slides.",
+  title: "Spigot deck, the agent that decides what to buy and when to stop",
+  description: "Circle built the rail. Spigot is the demand side.",
 };
 
 /**
@@ -56,78 +56,58 @@ const SLIDES: Slide[] = [
   },
   {
     n: "02",
-    kicker: "Why now, why Arc",
+    kicker: "Where we sit",
     title: (
       <>
-        Gas and payment are finally <span className="hl">the same asset</span>
+        Circle built the rail. <span className="hl">Spigot is the buyer</span>
       </>
     ),
     body: (
       <>
         <p>
-          Per-second settlement is absurd on a chain where gas is a separate volatile asset worth more than the payment.
-          Arc removes half of that: USDC is the gas token, so the fee and the payment are denominated in the same thing
-          and can be compared directly.
+          Look at the Agent Stack: wallets, nanopayments, a marketplace, a CLI, skills. It is a complete supply side.
+          An agent can hold money, move it for nothing, discover a service and pay for it.
         </p>
         <p>
-          That comparison is the whole product. It is a measurement, not an opinion, and it is available to any agent
-          over a single RPC call.
+          None of it decides <em>whether the next second is worth buying</em>. That judgement is the whole of the
+          demand side, and it is what Spigot is: a budget it cannot breach, a price ceiling it will not cross, a value
+          signal tied to something real, and a gate it shuts on itself.
+        </p>
+        <p>
+          We settle through Circle rather than around it. The rail is theirs and it is excellent. The buyer is the part
+          nobody had built.
         </p>
       </>
     ),
   },
   {
     n: "03",
-    kicker: "The part demos hide",
-    title: (
-      <>
-        Settling every second would pay <span className="hl">the chain more</span> than the provider
-      </>
-    ),
+    kicker: "Two rails, one agent",
+    title: <>The same policy, whatever the payment costs</>,
     body: (
       <>
+        <p>
+          Settling directly on Arc costs gas, so the agent batches: it reads the live fee, works out the smallest block
+          worth settling, and waits until a block clears it. Through Circle Nanopayments the signature is off-chain and
+          Circle batches the on-chain settlement, so gas per block is zero and the agent settles every single tick at a
+          fraction of a cent.
+        </p>
         <Figs
           items={[
-            ["~25 gwei", "Arc gas price, live"],
-            ["$0.0016", "one settlement"],
-            ["$0.001/sec", "a market data feed"],
+            ["~$0.0016", "gas per direct settlement"],
+            ["$0.00", "gas per nanopayment"],
+            ["1 agent", "identical policy on both"],
           ]}
         />
         <p>
-          A feed priced at a tenth of a cent per second, settled every second, hands the chain more than it hands the
-          provider. Most per-second payment demos never run this arithmetic, because on testnet with sponsored gas it
-          never bites.
+          Both are live and both are running. The economics change completely between them; the decision logic does not
+          change at all. That is the point of putting the judgement in the buyer.
         </p>
       </>
     ),
   },
   {
     n: "04",
-    kicker: "The idea",
-    title: (
-      <>
-        Decide every second. <span className="hl">Settle when it pays</span>
-      </>
-    ),
-    body: (
-      <>
-        <p>
-          Spigot separates two cadences that per-second billing conflates. The agent decides every second, because that
-          is how often the value of the next second changes. It settles only once the amount owed makes Arc&apos;s fee a
-          small share of it, reading the live gas price to work out when that is.
-        </p>
-        <Figs
-          items={[
-            ["~33s", "on a $0.001/sec feed"],
-            ["~0.65s", "on $0.05/sec inference"],
-            ["~0.07s", "on a $0.50/sec GPU"],
-          ]}
-        />
-      </>
-    ),
-  },
-  {
-    n: "05",
     kicker: "The mechanism",
     title: (
       <>
@@ -137,88 +117,106 @@ const SLIDES: Slide[] = [
     body: (
       <>
         <p>
-          Opening a block commits the agent to paying for the whole block, so it only opens one it can afford outright,
-          and it always stops on a boundary. If the stream stops earning its price partway through, the agent stops
-          buying immediately and rides out what it already committed to, rather than walking away from time the provider
-          delivered.
+          On the metered rail, opening a block commits the agent to paying for the whole block, so it only opens one it
+          can afford outright and it always stops on a boundary. If the stream stops earning its price partway through,
+          the agent stops buying at once and rides out what it already committed to, rather than walking away from time
+          the provider delivered.
         </p>
         <p>
-          That is what holds the fee ceiling on every settlement, the last one included, instead of leaking a
-          sub-economical fragment at the end of each session.
+          That is what holds the fee ceiling on every settlement including the last, instead of leaking a
+          sub-economical fragment at the end of every session.
         </p>
+      </>
+    ),
+  },
+  {
+    n: "05",
+    kicker: "The signal",
+    title: (
+      <>
+        We measured the signal <span className="hl">before trusting it</span>
+      </>
+    ),
+    body: (
+      <>
+        <p>
+          The agent buys a live BTC risk feed, so the obvious value signal was price movement. We measured it before
+          building on it. Sampled once a second against spot, <strong>eight of nine samples came back unchanged</strong>,
+          a mean move of 0.0002bps. At three seconds all nine were identical. That signal is dead at this cadence, and
+          tuning a threshold low enough to make it look alive would have been theatre.
+        </p>
+        <p>
+          Trade flow does move. The exchange ticker carries a monotonic trade id, so the difference between two samples
+          is exactly how many trades happened in between: <strong>2 to 10 per second</strong> over the same window that
+          produced the flat prices. The agent rules on that, and anyone can check it against the same public endpoint.
+        </p>
+        <p>A live run bought while flow held near 4 per second and closed its own gate when it fell to 3.63.</p>
       </>
     ),
   },
   {
     n: "06",
-    kicker: "The autonomy",
-    title: (
-      <>
-        A policy, a value signal, and <span className="hl">a gate it shuts itself</span>
-      </>
-    ),
+    kicker: "The gate is the payment",
+    title: <>There is no delivery step to trust</>,
     body: (
       <>
         <p>
-          The agent carries a hard USDC budget, a maximum acceptable rate per second, an objective, and an overhead
-          ceiling. Against that it weighs a value signal: what the next slice is worth right now, tied to a real input.
+          Spigot ships the provider side too: an x402-protected endpoint that prices each 402 challenge at exactly what
+          the block owes. The agent signs, Circle verifies and settles, and the response body <em>is</em> the next chunk
+          of the stream.
         </p>
-        <p>Every stop is a recorded decision with a reason:</p>
-        <ul className="ml-5 list-disc space-y-1">
-          <li>the marginal value of the next slice fell below its price</li>
-          <li>the budget would not cover another block</li>
-          <li>the stream is priced above the ceiling, so the gate never opened</li>
-        </ul>
-        <p>No human approves anything, at any point.</p>
+        <p>
+          Payment and delivery are the same request. Nothing is layered on top promising that the buyer got what it
+          paid for. Stop paying and the next chunk simply never arrives.
+        </p>
       </>
     ),
   },
   {
     n: "07",
-    kicker: "Built",
-    title: <>Running today, end to end</>,
-    body: (
-      <ul className="ml-5 list-disc space-y-2">
-        <li>
-          <b>Live console</b> running the real agent loop against Arc&apos;s live fee market, with three autonomous
-          outcomes.
-        </li>
-        <li>
-          <b>Two settlement paths</b>: Circle developer-controlled wallets, and a plain Arc key. Both settle by explicit
-          ERC-20 transfer, so both are provable.
-        </li>
-        <li>
-          <b>Cross-chain top-up</b>: an agent low on USDC bridges in over CCTP through Circle&apos;s Bridge Kit, with
-          the Forwarder minting so it needs no signer on Arc.
-        </li>
-        <li>
-          <b>meter402</b>, the streaming primitive underneath, published on npm and open source so any Arc builder can
-          reuse it.
-        </li>
-        <li>
-          <b>21 tests</b> over the rules that move money.
-        </li>
-      </ul>
-    ),
-  },
-  {
-    n: "08",
     kicker: "Proof",
     title: (
       <>
-        Do not trust our numbers. <span className="hl">Re-derive them</span>
+        A public record that <span className="hl">stores nothing</span>
       </>
     ),
     body: (
       <>
+        <p>
+          Most projects publish a number from their own database and ask you to believe it. Spigot holds none. Every
+          figure on <span className="mono">/api/impact</span> is fetched on request from a ledger we do not control:
+          direct settlements from Arc&apos;s USDC transfer log, gas-free settlements from Circle&apos;s own Gateway API.
+        </p>
         <div className="codeblock">
           {`git clone https://github.com/Risingtell/spigot
 npm install && npm run verify`}
         </div>
         <p style={{ marginTop: "1.25rem" }}>
-          One command, no keys, no wallet. It reads Arc directly for the chain id, block height and live gas price,
-          prices one settlement, derives the cadence, and sums every USDC transfer an agent made to a provider straight
-          from the token&apos;s transfer logs. Nothing in that path comes from a Spigot server.
+          One command, no keys, no configuration. It re-derives the on-chain half independently and holds the published
+          feed against the chain. The feed claims the on-chain figure alone, never the combined one, because the chain
+          can only back what settled on it.
+        </p>
+      </>
+    ),
+  },
+  {
+    n: "08",
+    kicker: "Honesty as a feature",
+    title: <>The tooling caught us overclaiming</>,
+    body: (
+      <>
+        <p>
+          When the feed first went up it reported five settlements totalling $2.46. The agent had settled four
+          totalling $0.46. The difference was the $2 deposit that funded the Gateway balance, counted as revenue
+          because it is also a transfer out of the agent.
+        </p>
+        <p>
+          Both the feed and the verifier now scope the figure to transfers that actually reached the provider, and
+          report anything else as movement, named explicitly. The verifier still prints the larger raw chain figure
+          next to the smaller claim, so the invariant stays visible instead of hiding behind a filter.
+        </p>
+        <p>
+          A payments product that cannot catch itself inflating a number is not one you should run money through.
         </p>
       </>
     ),
@@ -238,13 +236,13 @@ npm install && npm run verify`}
         <tbody>
           {(
             [
-              ["Wallets on Arc", "Circle developer-controlled wallets, or a plain Arc key"],
-              ["Per-second settlement", "USDC on Arc, sub-second finality"],
+              ["Gas-free sub-cent settlement", "Circle Nanopayments over Gateway"],
+              ["Selling a metered stream", "x402 challenge priced per block, BatchFacilitatorClient"],
+              ["Direct on-chain settlement", "USDC on Arc, explicit ERC-20 transfer so it is provable"],
+              ["Wallets", "Circle developer-controlled wallets, or a plain Arc key"],
               ["Settlement cadence", "Arc stable-fee design, USDC as the gas token"],
               ["Refilling across chains", "CCTP v2 through Circle Bridge Kit, Arc domain 26"],
-              ["Minting with no signer on Arc", "Circle Forwarder"],
-              ["Payment envelope", "x402 and Circle Gateway"],
-              ["The streaming layer", "meter402, published npm SDK"],
+              ["The streaming layer", "meter402, our own npm package, MIT"],
             ] as [string, string][]
           ).map(([flow, cap]) => (
             <tr key={flow}>
@@ -261,20 +259,19 @@ npm install && npm run verify`}
     kicker: "Where it goes",
     title: (
       <>
-        From a working meter to <span className="hl">a market</span>
+        Every agent economy needs <span className="hl">a buyer with judgement</span>
       </>
     ),
     body: (
       <>
         <p>
-          The settlement layer is done and provable. What turns it into a business is the other side of it: providers
-          listing metered streams, agents discovering and holding them, and a public ledger of settlements anyone can
-          audit.
+          The rails are being built well and fast, by Circle and by others. What is missing is the side that decides.
+          An agent with a wallet and no policy is not autonomous, it is just unattended.
         </p>
         <p>
-          Every agent that starts holding services by the second needs exactly one thing first, and it is not another
-          wallet. It is a meter that both sides trust. Arc is the only chain where that meter can be honest about its
-          own cost.
+          Spigot is that policy, running against real money on two rails, with a public record anyone can re-derive.
+          The next step is more streams and more providers on the same meter, which is why the settlement primitive
+          underneath is open source rather than ours alone.
         </p>
       </>
     ),
@@ -319,12 +316,10 @@ export default function Deck() {
             <p className="crumb">
               <Link href="/">Spigot</Link> &middot; Deck
             </p>
-            <h1 className="h-lg">
-              Agents that pay by the second, and know when to stop
-            </h1>
+            <h1 className="h-lg">Circle built the rail. Spigot is the agent that decides what to buy on it</h1>
             <p className="lede">
-              Streaming settlement on Arc, priced against the chain&apos;s own fee market. Programmable Money Hackathon,
-              Agentic Economy track. Built by Rising Technologies.
+              Streaming settlement on Arc, live on two rails, with a public record that stores nothing. Programmable
+              Money Hackathon, Agentic Economy track. Built by Rising Technologies.
             </p>
           </div>
         </section>
@@ -353,8 +348,11 @@ export default function Deck() {
           <div className="wrap cta__in">
             <div>
               <p className="eyebrow eyebrow--onAmber">See it run</p>
-              <h2 className="h-lg">The console is live</h2>
-              <p>Pick a scenario and watch an agent hold a stream, settle it, and close its own gate.</p>
+              <h2 className="h-lg">The console settles real USDC</h2>
+              <p>
+                Pick a scenario and watch an agent hold a stream, settle it on Arc, and close its own gate. Every
+                settlement links to the explorer.
+              </p>
             </div>
             <div className="hero__cta">
               <Link className="btn" href="/">
@@ -363,8 +361,8 @@ export default function Deck() {
                   &rarr;
                 </span>
               </Link>
-              <a className="btn btn--ghost" href="https://github.com/Risingtell/spigot" target="_blank" rel="noreferrer">
-                View the repo
+              <a className="btn btn--ghost" href="/api/impact">
+                The public record
               </a>
             </div>
           </div>

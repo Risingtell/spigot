@@ -98,15 +98,15 @@ export default function Home() {
             <div className="hero__copy">
               <p className="eyebrow eyebrow--onAmber">Agentic Economy &middot; Built on Arc</p>
               <h1 className="h-xl" id="heroH">
-                <span className="l">Pay by</span>
-                <span className="l">the second.</span>
-                <span className="l">Know when</span>
-                <span className="l">to stop.</span>
+                <span className="l">The agent</span>
+                <span className="l">that knows</span>
+                <span className="l">when to</span>
+                <span className="l">stop paying.</span>
               </h1>
               <p className="hero__sub">
-                An autonomous agent holds a metered service, prices every second against what that second is worth, and
-                shuts its own gate the moment the answer turns. It settles in USDC on the cadence Arc&apos;s own fee
-                market allows.
+                Circle built the rail. Spigot is the buyer: an agent that holds a metered service, prices every second
+                against what that second is worth, and shuts its own gate the moment the answer turns. Live on two
+                rails, settling real USDC on Arc.
               </p>
               <div className="hero__cta">
                 <a className="btn" href="#console">
@@ -130,29 +130,34 @@ export default function Home() {
         <section className="stats" aria-label="Arc fee market">
           <div className="pat pat--diag" aria-hidden="true" />
           <div className="wrap stats__in">
-            <p className="eyebrow eyebrow--onDark">The arithmetic nobody runs</p>
+            <p className="eyebrow eyebrow--onDark">Live on two rails</p>
             <div className="stats__grid">
               <div className="rv">
                 <span className="stat__n">$0.0016</span>
-                <span className="stat__l">What one settlement costs on Arc right now</span>
+                <span className="stat__l">Gas per settlement on the direct Arc rail</span>
               </div>
               <div className="rv">
-                <span className="stat__n">$0.001</span>
-                <span className="stat__l">What a market data feed earns in a second</span>
+                <span className="stat__n">$0.00</span>
+                <span className="stat__l">Gas per settlement through Circle Nanopayments</span>
               </div>
               <div className="rv">
-                <span className="stat__n">160%</span>
-                <span className="stat__l">What the chain would take if you settled every second</span>
+                <span className="stat__n">1</span>
+                <span className="stat__l">Agent policy, identical on both rails</span>
               </div>
               <div className="rv">
-                <span className="stat__n">4.3%</span>
-                <span className="stat__l">What it actually takes, on every settlement Spigot makes</span>
+                <span className="stat__n">0</span>
+                <span className="stat__l">Numbers stored by us. The public record is re-derived on request</span>
               </div>
             </div>
             <p className="stats__note">
-              Gas on Arc is USDC, so the fee and the payment are the same asset and can be compared directly. Spigot
-              reads that comparison live, per stream, and schedules around it. The figures above are measured from the
-              public RPC, not assumed, and they move with the market.
+              Settling directly on Arc costs gas, so the agent reads the live fee and batches into blocks worth
+              settling. Through Circle Nanopayments the signature is off-chain and the settlement is batched by Circle,
+              so it settles every tick for nothing. The economics change completely between the two; the decision logic
+              does not change at all. See the live record at{" "}
+              <a href="/api/impact" className="mono" style={{ color: "var(--amber)" }}>
+                /api/impact
+              </a>
+              .
             </p>
           </div>
         </section>
@@ -164,11 +169,11 @@ export default function Home() {
             <div className="rv">
               <div className="stmt__rule" aria-hidden="true" />
               <blockquote id="stmtH">
-                x402 pays per request.
+                An agent with a wallet and no policy
                 <em>
-                  <span className="hl">Agents do not consume</span>
+                  <span className="hl">is not autonomous.</span>
                 </em>
-                per request.
+                It is just unattended.
               </blockquote>
             </div>
             <div className="prose rv">
