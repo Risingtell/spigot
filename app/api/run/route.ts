@@ -26,21 +26,50 @@ const LIVE_PROVIDER = process.env.SPIGOT_PROVIDER_ADDRESS;
 const SIMULATED_PROVIDER = "0xProviderTreasury000000000000000000000000";
 
 /**
- * Guards on a public endpoint that spends real money: one live run at a time, a
- * minimum gap between them, and a ceiling on what the whole deployment will spend
- * before it stops offering live settlement. Anything the guards block still runs,
- * just simulated, so a judge always sees the loop work.
+ * Guards on a public endpoint that spends money on every click.
+ *
+ * The rate limit and the in-flight lock are per instance, which is all a
+ * serverless runtime can offer, and they are worth having because they smooth the
+ * common case of somebody clicking repeatedly.
+ *
+ * The spend ceiling cannot work that way. Module state resets on every cold
+ * start, so a counter of what this deployment has spent reads zero again the
+ * moment the instance is recycled, and a cap built on it is not a cap at all. The
+ * only number that survives a cold start is the one on the chain, so the real
+ * floor is the agent's own balance: below the reserve, live settlement is simply
+ * not offered. That holds however many instances are running.
+ *
+ * Anything a guard blocks still runs, just simulated, so a judge always sees the
+ * loop work rather than an error.
  */
 const MIN_LIVE_GAP_MS = 15_000;
-const DEPLOYMENT_SPEND_CAP_UNITS = 2_000_000n; // $2 of testnet USDC
+/** Stop settling live once the wallet falls to this, so the demo cannot drain itself. */
+const RESERVE_UNITS = 5_000_000n; // $5 of testnet USDC
+/** Re-reading the balance every click would be its own rate-limit problem. */
+const BALANCE_TTL_MS = 60_000;
+
 let lastLiveRunAt = 0;
 let liveRunInFlight = false;
-let liveSpentUnits = 0n;
+let balanceCheckedAt = 0;
+let lastKnownUnits = 0n;
 
-function liveRunAllowed(): boolean {
+/** The agent's on-chain balance, cached briefly. Cheap enough, and it is the truth. */
+async function agentUnits(provider: ArcEoaSettlementProvider): Promise<bigint> {
+  if (Date.now() - balanceCheckedAt < BALANCE_TTL_MS) return lastKnownUnits;
+  try {
+    lastKnownUnits = await provider.balanceUnits();
+    balanceCheckedAt = Date.now();
+  } catch {
+    // If the balance cannot be read, assume the worst and stay simulated.
+    lastKnownUnits = 0n;
+    balanceCheckedAt = Date.now();
+  }
+  return lastKnownUnits;
+}
+
+function liveRunPermitted(): boolean {
   if (!arcKeyConfigured() || !LIVE_PROVIDER) return false;
   if (liveRunInFlight) return false;
-  if (liveSpentUnits >= DEPLOYMENT_SPEND_CAP_UNITS) return false;
   return Date.now() - lastLiveRunAt >= MIN_LIVE_GAP_MS;
 }
 
@@ -94,21 +123,29 @@ export async function POST(req: Request) {
   }
   const scenario = SCENARIOS[scenarioId];
 
-  const live = liveRunAllowed();
-  const payTo = live && LIVE_PROVIDER ? LIVE_PROVIDER : SIMULATED_PROVIDER;
-
   let provider: SettlementProvider = new MockSettlementProvider();
   let agentWallet = "agent-alpha-wallet";
-  if (live) {
+  let heldBack: string | undefined;
+
+  if (liveRunPermitted()) {
     try {
       const arc = new ArcEoaSettlementProvider();
-      provider = arc;
-      agentWallet = arc.address;
+      const units = await agentUnits(arc);
+      if (units >= RESERVE_UNITS) {
+        provider = arc;
+        agentWallet = arc.address;
+      } else {
+        // Not an error. The wallet is down to its reserve, so the demo keeps
+        // working and says why it is not spending.
+        heldBack = "the agent's wallet is at its reserve, so this run was simulated";
+      }
     } catch {
-      // No usable key after all - run simulated rather than fail the request.
+      // No usable key after all. Run simulated rather than fail the request.
     }
   }
+
   const settlingLive = !provider.mock;
+  const payTo = settlingLive && LIVE_PROVIDER ? LIVE_PROVIDER : SIMULATED_PROVIDER;
 
   const store = new MemoryStore([
     {
@@ -153,7 +190,8 @@ export async function POST(req: Request) {
   } finally {
     if (settlingLive) {
       liveRunInFlight = false;
-      liveSpentUnits += BigInt(meter.impact().totals.totalPaid || "0");
+      // The wallet just moved, so the cached balance is stale by definition.
+      balanceCheckedAt = 0;
     }
   }
 
@@ -179,6 +217,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     mode: settlingLive ? "live" : "simulated",
     agent: settlingLive ? agentWallet : undefined,
+    heldBack,
     scenario: {
       id: scenario.id,
       label: scenario.label,
