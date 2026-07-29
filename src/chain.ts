@@ -7,6 +7,7 @@
  * place that knows how to do that against a public endpoint that throttles.
  */
 
+import { custom } from "viem";
 import { createEvmVerifier, type VerifierAdapter } from "meter402";
 import { ARC_TESTNET_CAIP2, ARC_TESTNET_RPC, ARC_TESTNET_USDC } from "./arc";
 
@@ -83,6 +84,24 @@ export async function hexCall(method: string, params: unknown[] = []): Promise<s
 
 export async function headBlock(): Promise<number> {
   return Number(BigInt(await hexCall("eth_blockNumber")));
+}
+
+/**
+ * A viem transport that goes through the retrying, paced call above.
+ *
+ * viem's default HTTP transport talks straight to the endpoint, so anything built
+ * on it inherits Arc's throttling. That bit the hosted console: polling
+ * `eth_getTransactionReceipt` after a settlement tripped the limit, and the agent
+ * closed the session mid-run with "settlement failed". Routing viem through the
+ * same transport as everything else fixes it in one place, and works inside a
+ * serverless function where a local proxy process is not an option.
+ */
+export function pacedTransport() {
+  return custom({
+    async request({ method, params }: { method: string; params?: unknown }) {
+      return call(method, (params as unknown[]) ?? []);
+    },
+  });
 }
 
 /** The label meter402 gives transfers that reached the configured provider. */

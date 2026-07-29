@@ -13,9 +13,10 @@
  * chain by anyone with the agent's address (see `src/verify.ts`).
  */
 
-import { createPublicClient, createWalletClient, defineChain, http, type Hex } from "viem";
+import { createPublicClient, createWalletClient, defineChain, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { SettlementProvider, SettlementResult, TickQuote } from "meter402";
+import { pacedTransport } from "./chain";
 import {
   ARC_EXPLORER,
   ARC_TESTNET_CAIP2,
@@ -92,7 +93,9 @@ export class ArcEoaSettlementProvider implements SettlementProvider {
     if (!key) throw new Error("No Arc key: set SPIGOT_ARC_KEY to settle on Arc.");
 
     const account = privateKeyToAccount(normalisedKey(key));
-    const transport = http(opts.rpcUrl ?? ARC_TESTNET_RPC);
+    // Not viem's plain http transport: Arc throttles, and polling a receipt after
+    // a settlement is exactly the burst that trips it.
+    const transport = pacedTransport();
     this.address = account.address;
     this.wallet = createWalletClient({ account, chain: arcTestnet, transport });
     this.publicClient = createPublicClient({ chain: arcTestnet, transport });
