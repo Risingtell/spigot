@@ -14,10 +14,10 @@
     "test": "node --import tsx --test test/*.test.ts",
     "demo": "tsx examples/demo.ts",
     "verify": "tsx src/verify.ts",
-    "agent": "node --env-file=.env.local --import tsx src/run-live.ts",
-    "topup": "node --env-file=.env.local --import tsx src/run-topup.ts",
+    "agent": "node --env-file-if-exists=.env.local --import tsx src/run-live.ts",
+    "topup": "node --env-file-if-exists=.env.local --import tsx src/run-topup.ts",
     "wallet:new": "tsx scripts/new-wallet.ts",
-    "nano": "node --env-file=.env.local --import tsx src/run-nano.ts"
+    "nano": "node --env-file-if-exists=.env.local --import tsx src/run-nano.ts"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.14.0",

@@ -112,16 +112,41 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Payment rejected", reason: verified.invalidReason }, { status: 402 });
   }
 
+  /**
+   * Produce the chunk BEFORE taking the money.
+   *
+   * The obvious order is to settle and then serve, and it is wrong. Producing a
+   * chunk means calling a live exchange, which can be slow or down, and if it
+   * failed after settlement the buyer would have paid and received a 500. In a
+   * payments product that is the one failure that must not exist.
+   *
+   * This way round, a provider that cannot deliver simply does not get paid: the
+   * payment authorisation goes unused and the buyer is free to spend it elsewhere.
+   * Verification still runs first, so nobody gets a chunk without a valid payment
+   * to redeem.
+   */
+  let chunkBody: unknown;
+  try {
+    chunkBody = await chunk.next();
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: "Upstream data unavailable, so no payment was taken.",
+        reason: (err as Error).message,
+      },
+      { status: 503 },
+    );
+  }
+
   const settled = await facilitator.settle(payload as never, requirements as never);
   if (!settled.success) {
     return NextResponse.json({ error: "Payment not settled", reason: settled.errorReason }, { status: 402 });
   }
 
-  // Paid. Hand over the chunk.
   return NextResponse.json(
     {
       stream: streamId,
-      chunk: await chunk.next(),
+      chunk: chunkBody,
       paidUnits: units.toString(),
       settlement: settled.transaction ?? null,
       network: ARC_TESTNET_CAIP2,

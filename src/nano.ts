@@ -137,7 +137,19 @@ export class NanoSettlementProvider implements SettlementProvider {
     if (units <= 0n) return { txHash: "", explorerUrl: "", network: this.network };
 
     const url = `${this.sellerBaseUrl}/api/stream/tick?stream=${encodeURIComponent(quote.stream.id)}&units=${units}`;
-    const result = await withRetry(() => this.gateway.pay<{ chunk?: unknown }>(url), { label: "gateway.pay" });
+
+    /**
+     * Deliberately not retried.
+     *
+     * `pay()` signs an authorisation and hands it to the seller, who settles it.
+     * If the call fails after the seller already settled, the money has moved and
+     * only the response was lost, so retrying would authorise the same block a
+     * second time. The agent treats a failed payment the same way it treats a
+     * failed on-chain settlement: close the session on the record rather than risk
+     * paying twice for the same seconds. Every read around it retries freely,
+     * because a read cannot double-spend.
+     */
+    const result = await this.gateway.pay<{ chunk?: unknown }>(url);
 
     if (result.amount !== units) {
       throw new Error(`Gateway settled ${result.amount} units for a block owing ${units}.`);

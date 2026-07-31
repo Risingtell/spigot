@@ -13,7 +13,7 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | --- | --- |
 | Chain | Arc Testnet (5042002), USDC as the gas token |
 | Settled on-chain | real USDC transfers, re-derivable from the token ledger |
-| Chain fee share | 1.14% of each settlement on the live runs, against a 5% ceiling |
+| Chain fee share | Around 2% of each settlement, against a 5% ceiling. `npm run verify` recomputes it |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
 | Tests | 21 passing over the rules that move money |
@@ -40,7 +40,7 @@ half of that problem: USDC *is* the gas token, so the fee and the payment are th
 same asset and directly comparable.
 
 It does not remove the other half, and this is the part a demo usually hides. Right
-now Arc quotes around 24 gwei, so one USDC transfer costs about **$0.0016**. A
+now Arc quotes around 25 gwei, so one USDC transfer costs roughly **$0.0016**. A
 market-data feed at $0.001/sec would hand the chain **more than the provider
 earns** if it settled every second.
 

@@ -115,17 +115,33 @@ async function fromGateway(): Promise<ImpactSource> {
   const privateKey = (key.startsWith("0x") ? key : `0x${key}`) as `0x${string}`;
   const gateway = new GatewayClient({ chain: GATEWAY_CHAIN, privateKey });
 
-  const page = await withRetry(
-    () => gateway.searchTransfers({ from: agentAddress as `0x${string}`, pageSize: 100 }),
-    { label: "searchTransfers" },
-  );
-
+  /**
+   * Page through rather than reading the first hundred and calling it the total.
+   * A single page would silently under-report the moment the agent passes that
+   * many settlements, and a figure that quietly stops growing is worse than one
+   * that is obviously missing.
+   */
+  const MAX_PAGES = 10;
   let total = 0n;
   let count = 0;
-  for (const transfer of page.transfers ?? []) {
-    if (transfer.toAddress?.toLowerCase() !== providerAddress.toLowerCase()) continue;
-    total += BigInt(transfer.amount ?? "0");
-    count += 1;
+  let cursor: string | undefined;
+  let truncated = false;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await withRetry(
+      () => gateway.searchTransfers({ from: agentAddress as `0x${string}`, pageSize: 100, pageAfter: cursor }),
+      { label: "searchTransfers" },
+    );
+
+    for (const transfer of res.transfers ?? []) {
+      if (transfer.toAddress?.toLowerCase() !== providerAddress.toLowerCase()) continue;
+      total += BigInt(transfer.amount ?? "0");
+      count += 1;
+    }
+
+    cursor = res.pagination?.pageAfter;
+    if (!cursor || !res.transfers?.length) break;
+    if (page === MAX_PAGES - 1) truncated = true;
   }
 
   return {
@@ -133,7 +149,9 @@ async function fromGateway(): Promise<ImpactSource> {
     totalUnits: total.toString(),
     totalUsd: unitsToUsdc(total.toString()),
     source: "Circle Gateway transfer API",
-    note: "Signed off-chain and batched by Circle, so these do not appear as individual Arc transactions.",
+    note:
+      "Signed off-chain and batched by Circle, so these do not appear as individual Arc transactions." +
+      (truncated ? " More pages exist than were read; this is a floor, not the total." : ""),
   };
 }
 
