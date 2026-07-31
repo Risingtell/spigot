@@ -387,7 +387,7 @@ npm install && npm run verify`}
             </div>
           </div>
           <div className="ftr__bot">
-            <span>Rising Technologies</span>
+            <span>Rising Technology</span>
             <span>Programmable Money Hackathon &middot; Agentic Economy</span>
           </div>
         </div>

@@ -33,28 +33,47 @@ npm install
 npm run verify
 ```
 
-This is the load-bearing command. It:
+This is the load-bearing command. It needs no keys and no configuration. It:
 
 1. calls `eth_chainId`, `eth_blockNumber` and `eth_gasPrice` against
    `https://rpc.testnet.arc.network`;
 2. prices one USDC transfer at that gas price and derives the settlement cadence;
-3. given `SPIGOT_AGENT_ADDRESS`, sums every USDC transfer that agent made to a
-   provider, straight from the token's `Transfer` logs.
+3. sums every USDC transfer Spigot's agent made to its provider, straight from the
+   token's `Transfer` logs, over the full history from the first settlement to the
+   current head.
+
+**It takes about two minutes and prints progress while it runs.** Arc caps a log
+query at 10,000 blocks and throttles the calls, so step 3 is 59 sequential windows
+and climbing. It waits the throttle out rather than failing, and if a window still
+cannot be read it says so and calls the total a floor instead of quietly reporting
+a short count.
 
 Every number it prints comes from Arc. Nothing is read from a Spigot server or
 database. Cross-check the gas price against
 [testnet.arcscan.app](https://testnet.arcscan.app) if you want a second source.
 
-Expected shape of the output:
+Expected shape of the output. The gas price moves; the settlement count and total
+should match exactly:
 
 ```
 Fee market
   chain id:          5042002 (Arc Testnet)
-  gas price:         24.0563 gwei  (live)
-  one settlement:    $0.001564 at 65000 gas
-  economical floor:  $0.031280 to keep the chain fee under 5%
-  cadence:           settle about every 31s on a $0.001/sec stream
+  gas price:         23.0000 gwei  (live)
+  one settlement:    $0.001495 at 65000 gas
+  economical floor:  $0.029900 to keep the chain fee under 5%
+  cadence:           settle about every 30s on a $0.001/sec stream
+
+Settlements
+  agent:             0x201EE872d4b1a3c06589032F682004a09ddB6aBA
+  settlements:       16
+  total settled:     $1.515800
+    excluded, not a settlement: 1 transfer(s) to Circle Gateway deposit, $2.000000
+  chain fee share:   1.58% of each settlement
 ```
+
+That excluded line is the point of the whole project in one row: the $2 that
+funded the Gateway balance is also a transfer out of the agent, and counting it as
+revenue is exactly the overclaim this build exists to refuse.
 
 ## 3. Watch an agent run end to end (1 minute)
 
@@ -63,7 +82,7 @@ npm run demo
 ```
 
 An agent holds inference capacity priced at $0.05/sec with a $0.60 budget. It
-rules on roughly ten intervals, settles about three times, and stops itself when
+rules on roughly a dozen intervals, settles three or four times, and stops itself when
 the value of the next slice drops below its cost. The closing lines show what the
 chain fee actually took, and the meter402 impact snapshot, which never claims more
 than it settled.

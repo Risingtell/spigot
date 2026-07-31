@@ -50,6 +50,7 @@ export function Console() {
   const [decision, setDecision] = useState<Decision | null>(null);
   const [fee, setFee] = useState<Fee | null>(null);
   const [mode, setMode] = useState<"live" | "simulated" | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   // The fee market is read on load so the economics are on screen before anyone
   // presses anything. It is a live call to Arc, not a stored constant.
@@ -71,13 +72,16 @@ export function Console() {
     setPlayed([]);
     setDecision(null);
     setMeta(null);
+    setFailure(null);
     try {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scenario }),
       });
+      if (!res.ok) throw new Error(`the run endpoint answered ${res.status}`);
       const data = await res.json();
+      if (!Array.isArray(data.settlements)) throw new Error("the run returned no settlements to replay");
       setMeta(data.scenario);
       setMode(data.mode === "live" ? "live" : "simulated");
       if (data.fee) setFee((f) => ({ ...(f ?? {}), ...data.fee }));
@@ -87,7 +91,11 @@ export function Console() {
       }
       setDecision(data.decision);
       setStatus("done");
-    } catch {
+    } catch (err) {
+      // Silently dropping back to idle left the button looking like it did
+      // nothing, which reads as broken rather than as a failed call. Say what
+      // happened instead.
+      setFailure(err instanceof Error ? err.message : "the run could not be completed");
       setStatus("idle");
     }
   }
@@ -172,7 +180,14 @@ export function Console() {
         </div>
       </div>
 
-      {mode && (
+      {failure && (
+        <p className="mt-3 border-l-4 border-[color:var(--destructive)] bg-white/[0.04] px-4 py-3 text-[0.8rem] text-white/70">
+          The run did not complete: {failure}. Nothing was settled. Press run again, or re-derive the settled history
+          from Arc with <span className="font-mono text-white">npm run verify</span>.
+        </p>
+      )}
+
+      {mode && !failure && (
         <p className="mt-3 text-[0.8rem] text-white/55">
           {mode === "live"
             ? "Settling real USDC on Arc Testnet."

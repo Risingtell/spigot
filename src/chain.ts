@@ -8,7 +8,7 @@
  */
 
 import { custom } from "viem";
-import { createEvmVerifier, type VerifierAdapter } from "meter402";
+import { createEvmVerifier, type OnChainTotals, type VerifierAdapter } from "meter402";
 import { ARC_TESTNET_CAIP2, ARC_TESTNET_RPC, ARC_TESTNET_USDC } from "./arc";
 
 /**
@@ -53,8 +53,21 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * sequential calls and Arc answers a burst with a 429, which killed the first live
  * verification run. Back off and retry rather than failing the whole read.
  */
+/**
+ * Arc throttles `eth_getLogs` by call count, not by response size, and it bites
+ * hard: measured against the public endpoint, only 8 to 14 of 25 sequential
+ * scans succeed, and slowing the pace from 120ms to 600ms does not help at all.
+ * Since a full history scan is now 59 windows and grows by about fourteen a day,
+ * the retry budget is what decides whether `npm run verify` finishes or dies
+ * halfway through. Six attempts over twelve seconds was not enough and the
+ * command crashed with a stack trace. This budget waits the limiter out.
+ */
+const MAX_ATTEMPTS = 9;
+const MAX_BACKOFF_MS = 8_000;
+
+const backoff = (attempt: number) => Math.min(MAX_BACKOFF_MS, 400 * 2 ** (attempt - 1));
+
 export async function call(method: string, params: unknown[]): Promise<unknown> {
-  const MAX_ATTEMPTS = 6;
   for (let attempt = 1; ; attempt++) {
     let res: Response;
     try {
@@ -65,13 +78,13 @@ export async function call(method: string, params: unknown[]): Promise<unknown> 
       });
     } catch (err) {
       if (attempt >= MAX_ATTEMPTS) throw err;
-      await sleep(400 * 2 ** (attempt - 1));
+      await sleep(backoff(attempt));
       continue;
     }
 
     if ((res.status === 429 || res.status >= 500) && attempt < MAX_ATTEMPTS) {
       const retryAfter = Number(res.headers.get("retry-after"));
-      const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 400 * 2 ** (attempt - 1);
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoff(attempt);
       await sleep(wait);
       continue;
     }
@@ -120,6 +133,14 @@ export function pacedTransport() {
 export const PROVIDER_LABEL = "provider treasury";
 
 /**
+ * Circle's Gateway wallet on Arc Testnet. The agent's deposit into Gateway lands
+ * here and is the one outflow that is emphatically not revenue, so name it: an
+ * excluded line reading "Circle Gateway deposit" says what happened, where
+ * "provider 0x0077777d..." leaves a reader to work it out.
+ */
+export const GATEWAY_WALLET = "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
+
+/**
  * Settlements are transfers that reached the provider, and nothing else.
  *
  * meter402 defines a settlement as any transfer from an agent to a non-agent,
@@ -160,7 +181,10 @@ export function arcVerifier(opts: {
     network: ARC_TESTNET_CAIP2,
     token: ARC_TESTNET_USDC,
     agents: opts.agents ?? [agentAddress],
-    providerNames: { [providerAddress.toLowerCase()]: "provider treasury" },
+    providerNames: {
+      [providerAddress.toLowerCase()]: PROVIDER_LABEL,
+      [GATEWAY_WALLET.toLowerCase()]: "Circle Gateway deposit",
+    },
     rpc: pacedRpc,
     chunkSize: CHUNK_SIZE,
     fromBlock: resolveFromBlock(opts),
@@ -175,4 +199,89 @@ export function resolveFromBlock(opts: { fromBlock?: number; toBlock: number; ma
   if (!opts.maxChunks) return anchored;
   const bounded = opts.toBlock - opts.maxChunks * CHUNK_SIZE;
   return Math.max(anchored, bounded);
+}
+
+/** A window the scan could not read, kept rather than quietly folded into a zero. */
+export interface MissedWindow {
+  fromBlock: number;
+  toBlock: number;
+  reason: string;
+}
+
+export interface ScanResult {
+  totals: OnChainTotals;
+  fromBlock: number;
+  /** The last block actually read, which is not always the one asked for. */
+  toBlock: number;
+  missed: MissedWindow[];
+  windows: number;
+}
+
+/**
+ * Re-derive settlements one 9,000-block window at a time, and survive the parts
+ * that fail.
+ *
+ * Handing the whole range to a single verifier meant one throttled window took
+ * the entire scan down with it, which is what made `npm run verify` exit with a
+ * stack trace on a fresh clone. Driving the windows here means a window that
+ * cannot be read is named and skipped, the totals from every other window still
+ * stand, and the caller can say plainly that the figure is a floor rather than
+ * presenting a short count as if it were complete.
+ *
+ * `budgetMs` exists for the serverless caller, which has a wall clock the CLI
+ * does not. When it runs out the scan stops early and reports how far it got.
+ */
+export async function scanSettlements(opts: {
+  fromBlock: number;
+  toBlock: number;
+  agents?: string[];
+  budgetMs?: number;
+  onWindow?: (done: number, total: number) => void;
+}): Promise<ScanResult> {
+  const started = Date.now();
+  const windows = Math.max(1, Math.ceil((opts.toBlock - opts.fromBlock + 1) / CHUNK_SIZE));
+  const perProvider: Record<string, { count: number; total: string }> = {};
+  const missed: MissedWindow[] = [];
+
+  let settlements = 0;
+  let totalPaid = 0n;
+  let covered = opts.fromBlock - 1;
+  let done = 0;
+
+  for (let from = opts.fromBlock; from <= opts.toBlock; from += CHUNK_SIZE) {
+    const to = Math.min(from + CHUNK_SIZE - 1, opts.toBlock);
+
+    if (opts.budgetMs && Date.now() - started > opts.budgetMs) {
+      missed.push({ fromBlock: from, toBlock: opts.toBlock, reason: "time budget for this request ran out" });
+      break;
+    }
+
+    try {
+      const totals = await arcVerifier({ agents: opts.agents, fromBlock: from, toBlock: to }).reDeriveTotals();
+      settlements += totals.settlements;
+      totalPaid += BigInt(totals.totalPaid);
+      for (const [label, row] of Object.entries(totals.perProvider)) {
+        const existing = perProvider[label] ?? { count: 0, total: "0" };
+        perProvider[label] = {
+          count: existing.count + row.count,
+          total: (BigInt(existing.total) + BigInt(row.total)).toString(),
+        };
+      }
+      covered = to;
+    } catch (err) {
+      missed.push({ fromBlock: from, toBlock: to, reason: (err as Error).message });
+    }
+
+    done += 1;
+    opts.onWindow?.(done, windows);
+    await sleep(PACE_MS);
+  }
+
+  return {
+    totals: { network: ARC_TESTNET_CAIP2, settlements, totalPaid: totalPaid.toString(), perProvider },
+    fromBlock: opts.fromBlock,
+    toBlock: Math.max(covered, opts.fromBlock),
+    missed,
+    windows,
+  };
 }

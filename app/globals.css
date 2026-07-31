@@ -24,7 +24,11 @@
 
   --pad: clamp(1.25rem, 5vw, 4.5rem);
   --sec: clamp(4rem, 9vw, 7.5rem);
-  --max: 1280px;
+  /* The measure holds at 1280px for every ordinary desktop, then grows past
+     ~1700px so the composition does not sit marooned in the middle of a
+     full-bleed band on an ultrawide monitor or a zoomed-out window. 75vw
+     crosses 1280 at exactly 1707px, so nothing below that width changes. */
+  --max: clamp(1280px, 75vw, 1800px);
 
   /* dark tokens, used by the console inside the black bands */
   --background: 24 14% 5%;
@@ -112,6 +116,19 @@ a {
   font-size: clamp(1.05rem, 1.6vw, 1.3rem);
   letter-spacing: 0.01em;
   line-height: 1.2;
+}
+
+/* Display type tops out at 1271px, so on anything wider it stops growing while
+   the band keeps stretching. Past the width where the measure starts growing,
+   let it keep scaling. Both clamps are continuous at 1700px, so no layout at or
+   below an ordinary desktop width is touched. */
+@media (min-width: 1700px) {
+  .h-xl {
+    font-size: clamp(6.75rem, 6.2vw, 9rem);
+  }
+  .h-lg {
+    font-size: clamp(4.25rem, 3.9vw, 5.5rem);
+  }
 }
 
 .eyebrow {
@@ -377,12 +394,19 @@ input:focus-visible {
 }
 .hero__pat {
   position: relative;
-  overflow: hidden;
+  /* No overflow clip here on purpose. The pattern has to escape this grid cell to
+     reach the edge of the full-bleed band; .hero clips it at the section instead. */
 }
 .hero__pat::before {
   content: "";
   position: absolute;
-  inset: -10% -10% -10% 0;
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  /* The grid is capped at the measure, but the amber band is full bleed, so on a
+     wide viewport the pattern used to stop mid-screen and leave a dead block of
+     amber beside it. Bleed it out to the viewport edge and past it; .hero clips. */
+  right: min(-10%, calc((var(--max) - 100vw) / 2 - 2rem));
   background-image:
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.85) 0 2px, transparent 2px 30px),
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.85) 0 2px, transparent 2px 30px);
@@ -390,7 +414,9 @@ input:focus-visible {
 }
 .hero__mark {
   position: absolute;
-  right: var(--pad);
+  /* Anchored to the measure, not to the viewport. Pinned to the viewport it
+     drifts away from the composition on a wide screen and reads as adrift. */
+  right: max(var(--pad), calc((100vw - var(--max)) / 2 + var(--pad)));
   bottom: clamp(1.5rem, 4vw, 3rem);
   width: clamp(58px, 6vw, 88px);
   z-index: 3;

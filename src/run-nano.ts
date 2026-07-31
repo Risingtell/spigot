@@ -121,6 +121,11 @@ async function main(): Promise<void> {
   let lastTps = window.tradesPerSecond();
 
   const valueSignal = async (ctx: TickContext): Promise<number> => {
+    // Keep Gateway's pre-signature hook in step with what the agent has actually
+    // settled. Without this the hook only ever sees zero spent, so it would catch
+    // a single block bigger than the whole budget and nothing else, and the second
+    // line of defence it is supposed to be would not exist.
+    spent = ctx.spentUnits;
     try {
       window.add(await fetchTicker());
       lastTps = window.tradesPerSecond();
@@ -139,7 +144,6 @@ async function main(): Promise<void> {
   };
 
   const result = await agent.stream(stream.id, { valueSignal, tickIntervalMs: 1000, maxTicks: MAX_TICKS });
-  spent = BigInt(result.spentUnits);
 
   console.log(`\nThe agent ruled on ${result.ticksMetered} intervals and settled ${result.settlements} times.`);
   console.log(`  reason it stopped: ${result.closedReason}`);

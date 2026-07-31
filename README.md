@@ -12,16 +12,25 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | | |
 | --- | --- |
 | Chain | Arc Testnet (5042002), USDC as the gas token |
-| Settled on-chain | real USDC transfers, re-derivable from the token ledger |
-| Chain fee share | Around 2% of each settlement, against a 5% ceiling. `npm run verify` recomputes it |
+| Settled on the direct rail | **19 settlements, $1.6985 USDC**, every one a `Transfer` in Arc's token ledger |
+| Settled gas free | **4 settlements, $0.3997 USDC** through Circle Nanopayments, signed off-chain and batched by Circle |
+| Both rails together | **23 settlements, $2.0981 USDC** at the time of writing, and climbing every time somebody runs the hosted console live |
+| Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
-| Tests | 21 passing over the rules that move money |
+| Tests | **21 passing**, over the rules that move money |
 | SDK | built on [meter402](https://www.npmjs.com/package/meter402), published on npm |
+
+Those numbers are a floor, not a boast, and they are the wrong way round on purpose:
+the hosted console settles for real, so the count above goes up on its own and the
+figure here goes stale downwards rather than upwards. The live one is at
+[`/api/impact`](https://spigot-taupe.vercel.app/api/impact) and the authoritative one
+comes from the chain:
 
 Run `npm run verify` on a fresh clone and it will re-derive Spigot's own settlements
 straight from Arc, with nothing configured. The totals it prints are not read from
-this repo or from any server we control.
+this repo or from any server we control. It walks 59 windows of Arc's log index and
+takes roughly two minutes, printing progress as it goes.
 
 Built on [meter402](https://github.com/Risingtell/meter402), the open-source
 per-second settlement primitive this project consumes as a published npm package.
@@ -209,6 +218,28 @@ These hold by construction, and the test suite asserts each one:
   the agent closes the session on the record instead of risking paying twice.
 - **Nothing is ever claimed that the chain does not show.** Spend is only booked on
   a confirmed settlement, and the impact snapshot is built from settled events.
+
+## What is honestly not production-grade yet
+
+Testnet only, and deliberately so: Arc mainnet is not open and the point of the
+build is the buyer-side policy, not custody. Beyond that:
+
+- **The hosted console's spend guards are per instance.** A rate limit and an
+  in-flight lock held in module state reset on a cold start, so the only cap that
+  genuinely holds across instances is the agent's own on-chain balance, which is
+  why live settlement simply stops being offered below a reserve. Said plainly in
+  [`app/api/run/route.ts`](./app/api/run/route.ts) rather than dressed up.
+- **The public record reads a bounded window.** Arc caps a log query at 10,000
+  blocks and produces about 130,000 a day, so no request-time scan can cover the
+  chain. The feed scans a fixed window anchored at the first settlement and names
+  the blocks it covered; `npm run verify` is the one that scans to the head.
+- **Sixteen deep transitive advisories remain open**, all inside Circle's own
+  SDKs (`@solana/web3.js`, `@ethersproject/*`, `@coral-xyz/anchor`) with no fix
+  published upstream. Every high-severity one is closed, by pinning `postcss` and
+  `sharp` through `overrides` rather than downgrading the framework.
+- **The value signal is one feed.** Trade flow from one exchange ticker drives the
+  decision. It is real and it was measured before being trusted, but it is a
+  single source, and a production buyer would want more than one.
 
 ## Tech stack
 

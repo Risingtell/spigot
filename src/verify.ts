@@ -21,9 +21,9 @@
  * a public address, which anyone can paste into the Arc explorer to confirm.
  */
 
-import { verifyAgainst, type ImpactSnapshot } from "meter402";
+import { type ImpactSnapshot } from "meter402";
 import { ARC_TESTNET_USDC, USDC_UNIT, unitsToUsdc } from "./arc";
-import { GENESIS_BLOCK, agentAddress, arcVerifier, headBlock, hexCall, providerAddress, rpcUrl, settlementsToProvider } from "./chain";
+import { GENESIS_BLOCK, agentAddress, headBlock, hexCall, rpcUrl, scanSettlements, settlementsToProvider } from "./chain";
 import {
   economicSettlementSeconds,
   fetchSettlementCost,
@@ -70,15 +70,37 @@ async function main(): Promise<void> {
   // -----------------------------------------------------------------------
 
   const fromBlock = process.env.SPIGOT_FROM_BLOCK ? Number(process.env.SPIGOT_FROM_BLOCK) : GENESIS_BLOCK;
-  const verifier = arcVerifier({ toBlock: head, fromBlock });
 
   console.log("Settlements");
   console.log(`  agent:             ${agentAddress}`);
   console.log(`  token:             ${ARC_TESTNET_USDC} (USDC on Arc)`);
-  console.log(`  blocks scanned:    ${fromBlock} to ${head}`);
+  console.log(`  blocks to scan:    ${fromBlock} to ${head}`);
 
-  const totals = await verifier.reDeriveTotals();
+  /**
+   * Arc caps a log query at 10,000 blocks and throttles the calls on top of that,
+   * so the full history is many sequential windows and takes a couple of minutes.
+   * Say so, and show progress: a command that prints nothing for two minutes reads
+   * as hung, whether the reader is a person or an agent.
+   */
+  const scan = await scanSettlements({
+    fromBlock,
+    toBlock: head,
+    onWindow: (done, total) => {
+      // Plain lines rather than a redrawn one: this output gets piped and read
+      // as often as it gets watched, and a carriage return turns a log into soup.
+      if (done === total || done % 10 === 0) console.log(`  scanning:          window ${done} of ${total}`);
+    },
+  });
+  const totals = scan.totals;
   const paid = settlementsToProvider(totals.perProvider);
+
+  if (scan.missed.length) {
+    console.log(`  incomplete:        ${scan.missed.length} of ${scan.windows} windows could not be read`);
+    for (const m of scan.missed.slice(0, 3)) {
+      console.log(`                     blocks ${m.fromBlock}-${m.toBlock}: ${m.reason}`);
+    }
+    console.log("                     Everything below is therefore a floor, not the total.");
+  }
 
   console.log(`  settlements:       ${paid.settlements}`);
   console.log(`  total settled:     ${usd(paid.totalUnits)}`);
@@ -115,14 +137,34 @@ async function main(): Promise<void> {
   }
 
   const claimed = (await res.json()) as ImpactSnapshot;
-  const report = await verifyAgainst(verifier, claimed);
+
+  /**
+   * Held against the provider-scoped total, not the raw outflow from the agent.
+   * meter402's own `verifyAgainst` counts every transfer to a non-agent, which
+   * includes the deposit that funded the Gateway balance, so checking against it
+   * would pass a feed claiming up to $2 more than it settled. The stricter
+   * comparison is the one worth publishing, and it reuses the scan already done
+   * rather than reading the whole history a second time.
+   */
+  const claimedSettlements = claimed.totals?.settlements ?? 0;
+  const claimedPaid = BigInt(claimed.totals?.totalPaid ?? "0");
+  const chainPaid = BigInt(paid.totalUnits);
+  const verified = !scan.missed.length && paid.settlements >= claimedSettlements && chainPaid >= claimedPaid;
 
   console.log("\nClaim check");
-  console.log(`  feed claims:       ${report.claimed.settlements} settlements, ${usd(report.claimed.totalPaid)}`);
-  console.log(`  chain shows:       ${report.chain.settlements} settlements, ${usd(report.chain.totalPaid)}`);
-  console.log(`  verdict:           ${report.verified ? "PASS" : "FAIL"} - ${report.note}`);
+  console.log(`  feed claims:       ${claimedSettlements} settlements, ${usd(claimedPaid)}`);
+  console.log(`  chain shows:       ${paid.settlements} settlements, ${usd(chainPaid)} to the provider`);
+  console.log(
+    `  verdict:           ${verified ? "PASS" : "FAIL"} - ${
+      scan.missed.length
+        ? "the scan was incomplete, so the chain figure is a floor and cannot settle the claim"
+        : verified
+          ? "the chain shows at least what the feed claims"
+          : "the feed claims more than the chain shows"
+    }`,
+  );
 
-  if (!report.verified) {
+  if (!verified) {
     process.exitCode = 1;
     return;
   }

@@ -42,7 +42,7 @@ export async function GET() {
         "settlement.",
       ].join("\n"),
       license: { name: "MIT", identifier: "MIT" },
-      contact: { name: "Rising Technologies", url: "https://github.com/Risingtell/spigot" },
+      contact: { name: "Rising Technology", url: "https://github.com/Risingtell/spigot" },
     },
     servers: [{ url: base, description: "Production" }],
     tags: [

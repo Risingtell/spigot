@@ -319,7 +319,7 @@ export default function Deck() {
             <h1 className="h-lg">Circle built the rail. Spigot is the agent that decides what to buy on it</h1>
             <p className="lede">
               Streaming settlement on Arc, live on two rails, with a public record that stores nothing. Programmable
-              Money Hackathon, Agentic Economy track. Built by Rising Technologies.
+              Money Hackathon, Agentic Economy track. Built by Rising Technology.
             </p>
           </div>
         </section>
@@ -372,7 +372,7 @@ export default function Deck() {
       <footer className="ftr">
         <div className="wrap">
           <div className="ftr__bot" style={{ marginTop: 0, paddingTop: 0, borderTop: 0 }}>
-            <span>Rising Technologies</span>
+            <span>Rising Technology</span>
             <span>spigot-taupe.vercel.app</span>
           </div>
         </div>
