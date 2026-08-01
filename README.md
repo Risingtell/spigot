@@ -18,7 +18,7 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
-| Tests | **21 passing**, over the rules that move money |
+| Tests | **24 passing**, over the rules that move money |
 | SDK | built on [meter402](https://www.npmjs.com/package/meter402), published on npm |
 
 Those numbers are a floor, not a boast, and they are the wrong way round on purpose:
@@ -94,12 +94,29 @@ recorded decision with a reason: budget exhausted, rate above ceiling, or the
 marginal value of the next slice fell below its price. See
 [`src/agent.ts`](./src/agent.ts).
 
-It also keeps itself funded. A streaming agent has a failure mode a per-request
-agent does not: running dry mid-stream, while holding something it is paying for
-by the second. When its Arc balance falls below its floor, it bridges USDC in from
-a reserve on another chain over CCTP, using Circle's Bridge Kit, with the
-Forwarder submitting the mint so it needs no signer on Arc at all. See
-[`src/treasury.ts`](./src/treasury.ts).
+It also keeps itself funded, and this is where the budget stops being a number on
+one chain. A streaming agent has a failure mode a per-request agent does not:
+running dry mid-stream, while holding something it is paying for by the second.
+
+The obvious answer is a reserve on a named chain and a bridge to move it. That
+makes the agent do treasury management, picking a source and a moment, and it
+means a budget spread over six chains is six budgets rather than one. Circle's
+**Unified Balance Kit** removes the question. The agent deposits USDC into Gateway
+on whatever chains it holds funds on, and from then on it has a single balance.
+When Arc runs low, `spend()` chooses the source chains itself, destination first
+and Ethereum last, builds one burn intent per source, batch-signs them over
+EIP-712, and mints on Arc through the Forwarder so the agent needs no gas and no
+signer there at all.
+
+It needs no Circle organisation, no API key and no entity secret: the kit
+authenticates through the adapter, so the key that settles is the key that moves
+the reserve. See [`src/treasury.ts`](./src/treasury.ts).
+
+```bash
+npm run topup                  # read the balance, draw only if the policy says so
+npm run topup -- --fund 5      # move USDC into the unified balance
+npm run topup -- --draw 2      # exercise a draw on demand
+```
 
 ## Run it
 
@@ -109,7 +126,7 @@ No keys, no wallet, no chain writes:
 npm install
 npm run demo      # an agent holds a stream, batches settlement, stops itself
 npm run verify    # re-derive the fee market and any settled totals from Arc
-npm test          # 21 tests over the rules that move money
+npm test          # 24 tests over the rules that move money
 ```
 
 `npm run verify` is the one to read closely. It takes Arc's gas price live, prices
@@ -133,10 +150,6 @@ explicit ERC-20 `transfer` call, so `npm run verify` can re-derive it. See
 [`.env.example`](./.env.example). The hosted console settles live too whenever the
 deployment holds a key, behind a spend cap and a rate limit, and labels which mode
 each run used.
-
-```bash
-npm run topup     # check the Arc balance, bridge in from the reserve chain
-```
 
 ### The gas-free rail
 
@@ -172,8 +185,9 @@ second instead, taken from the ticker's monotonic trade id.
 | Per-second USDC settlement, wallet to wallet | USDC on Arc, sub-second finality |
 | Settlement as an explicit ERC-20 call, so it is provable | Circle contract execution, viem on Arc |
 | Settlement cadence priced from the fee market | Arc's stable-fee design, USDC as gas token |
-| Agent refills its own Arc wallet across chains | CCTP v2 via Circle Bridge Kit, Arc domain 26 |
-| Mint on Arc without a signer there | Circle Forwarder (Orbit relayer) |
+| One USDC balance across every chain the agent holds | Circle Unified Balance Kit, Gateway v1 |
+| Choosing which chains to draw a top-up from | `spend()` auto-allocation, burn intents batch-signed over EIP-712 |
+| Mint on Arc without a signer or gas there | Circle Forwarder |
 | Per-request payment envelope under each settlement | x402 / Circle Gateway (`eip155:5042002`) |
 | Per-second streaming layer over x402 | meter402, published npm SDK |
 | Proof feed that never over-claims | meter402 impact snapshot plus on-chain verifier |
@@ -187,7 +201,7 @@ StreamingMeter    ◀──────  StreamingAgent    policy, value signal,
 SettlementProvider ◀─────  ArcSettlementProvider   settles via Circle on Arc
 createEvmVerifier ◀──────  verify.ts         re-derives totals from Arc logs
                            arc-gas.ts        live fee market, settlement economics
-                           treasury.ts       CCTP top-up via Bridge Kit
+                           treasury.ts       one balance across chains, drawn onto Arc
                            circle-wallet.ts  Circle wallets, ERC-20 transfer on Arc
                            arc-eoa.ts        the same settlement from a plain key
                            arc.ts            Arc constants, 18dp gas to 6dp billing
@@ -240,11 +254,16 @@ build is the buyer-side policy, not custody. Beyond that:
 - **The value signal is one feed.** Trade flow from one exchange ticker drives the
   decision. It is real and it was measured before being trusted, but it is a
   single source, and a production buyer would want more than one.
+- **The unified balance currently sits on one chain.** Every part of the treasury
+  is live and exercised on Arc, and auto-allocation reports the chains it drew
+  from, but a draw that spans two chains at once has not been run yet. Depositing
+  from another chain needs that chain's own gas token, which is the one thing Arc
+  removes and nowhere else does.
 
 ## Tech stack
 
 TypeScript, [meter402](https://www.npmjs.com/package/meter402),
-`@circle-fin/developer-controlled-wallets`, `@circle-fin/bridge-kit`,
+`@circle-fin/developer-controlled-wallets`, `@circle-fin/unified-balance-kit`,
 `@circle-fin/adapter-viem-v2`, Next.js, Arc Testnet, USDC.
 
 ## License

@@ -1,73 +1,129 @@
-﻿/**
- * Cross-chain top-up runner - the agent refilling its own Arc wallet.
+/**
+ * The agent refilling its own Arc wallet.
  *
- *   npm run topup
+ *   npm run topup                  check the balance, draw if the policy says so
+ *   npm run topup -- --fund 10     move 10 USDC from a chain into the unified balance
  *
  * Reads the agent's live USDC balance on Arc, applies the treasury policy, and if
- * the balance has fallen below the floor, bridges USDC in from the reserve chain
- * over CCTP. Requires, in .env.local:
+ * the balance has fallen below its floor, draws the shortfall out of its unified
+ * balance. No source chain is named anywhere below: Circle's auto-allocation reads
+ * what the agent holds and decides which chains to pull from.
  *
- *   CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, CIRCLE_WALLET_SET_ID
- *   SPIGOT_AGENT_WALLET_ID    - the agent's Circle wallet on Arc (the balance read)
- *   SPIGOT_AGENT_ADDRESS      - that wallet's Arc address (the mint recipient)
- *   SPIGOT_RESERVE_KEY        - key controlling the reserve on the source chain
- *   SPIGOT_RESERVE_CHAIN      - optional, defaults to Base_Sepolia
+ * Needs only what the rest of Spigot needs, in .env.local:
+ *
+ *   SPIGOT_ARC_KEY           - the agent's key, the same one that settles
+ *   SPIGOT_AGENT_ADDRESS     - its Arc address, which receives the mint
+ *
+ * Optional: SPIGOT_RESERVE_CHAIN, the chain `--fund` deposits from (Base_Sepolia).
  */
 
-import { getUsdc, circleConfigured } from "./circle-wallet";
-import { planTopUp, topUpArc, treasuryPolicy, type ReserveChain } from "./treasury";
-import { usdcToUnits } from "./arc";
+import { ArcEoaSettlementProvider, arcKeyConfigured } from "./arc-eoa";
+import {
+  drawToArc,
+  fundReserve,
+  planTopUp,
+  treasuryPolicy,
+  unifiedBalance,
+  type DepositChain,
+  type ReserveChain,
+} from "./treasury";
+import { unitsToUsdc } from "./arc";
 
-const agentWalletId = process.env.SPIGOT_AGENT_WALLET_ID;
-const arcAddress = process.env.SPIGOT_AGENT_ADDRESS;
-const reserveKey = process.env.SPIGOT_RESERVE_KEY;
 const reserveChain = (process.env.SPIGOT_RESERVE_CHAIN as ReserveChain | undefined) ?? "Base_Sepolia";
+/** `--from <chain>` overrides where a deposit is taken from, Arc_Testnet included. */
+const depositChain = (): DepositChain => {
+  const i = process.argv.indexOf("--from");
+  return i === -1 ? reserveChain : (process.argv[i + 1] as DepositChain);
+};
+
+/**
+ * Explicit amounts for the two operator-facing moves, `--fund` in and `--draw`
+ * out. With neither flag the agent runs its own policy and decides for itself,
+ * which is the path that matters; these two exist so the capability can be
+ * exercised on demand rather than only when a balance happens to be low.
+ */
+function amountFlag(flag: string): string | null {
+  const i = process.argv.indexOf(flag);
+  if (i === -1) return null;
+  const amount = process.argv[i + 1];
+  if (!amount || !(Number(amount) > 0)) throw new Error(`${flag} needs an amount in whole USDC, e.g. ${flag} 2`);
+  return Number(amount).toFixed(6);
+}
 
 async function main(): Promise<void> {
-  if (!circleConfigured() || !agentWalletId || !arcAddress) {
-    console.error("Set CIRCLE_API_KEY / CIRCLE_ENTITY_SECRET / CIRCLE_WALLET_SET_ID,");
-    console.error("plus SPIGOT_AGENT_WALLET_ID and SPIGOT_AGENT_ADDRESS, in .env.local.");
+  const key = process.env.SPIGOT_ARC_KEY;
+  const arcAddress = process.env.SPIGOT_AGENT_ADDRESS;
+
+  if (!arcKeyConfigured() || !key || !arcAddress) {
+    console.error("Set SPIGOT_ARC_KEY and SPIGOT_AGENT_ADDRESS in .env.local.");
+    console.error("Generate both with:  npm run wallet:new");
     process.exitCode = 1;
     return;
   }
 
-  const policy = treasuryPolicy({ floorUsdc: 0.5, targetUsdc: 2, reserveChain });
+  const deposit = amountFlag("--fund");
+  if (deposit) {
+    console.log(`Depositing $${deposit} USDC from ${depositChain()} into the agent's unified balance.\n`);
+    await fundReserve({
+      privateKey: key,
+      chain: depositChain(),
+      amountUsdc: deposit,
+      onStep: (s) => console.log(`  ${s.name} on ${s.chain}`),
+    });
+    console.log("\nDeposited. From here it is not funds on a chain, it is the agent's balance.");
+    return;
+  }
 
-  const { amount } = await getUsdc(agentWalletId);
-  const plan = planTopUp(usdcToUnits(amount), policy);
+  // What the agent can spend, everywhere, read from Circle rather than from us.
+  const balance = await unifiedBalance(key);
 
-  console.log("Spigot treasury check");
-  console.log(`  agent on Arc:  ${arcAddress}`);
-  console.log(`  balance:       $${amount.toFixed(6)} USDC`);
-  console.log(`  decision:      ${plan.needed ? "top up" : "hold"} - ${plan.reason}\n`);
+  console.log("Spigot treasury\n");
+  console.log(`  agent:            ${arcAddress}`);
+  console.log(`  unified balance:  $${balance.totalUsd.toFixed(6)} USDC across ${balance.perChain.length} chain(s)`);
+  for (const row of balance.perChain) {
+    console.log(`     ${row.chain.padEnd(24)} $${row.usd.toFixed(6)}`);
+  }
 
-  if (!plan.needed) return;
+  // The floor is about the chain the agent settles on, so it is the Arc spending
+  // balance that is measured, not the reserve.
+  const onArc = await new ArcEoaSettlementProvider().balanceUnits();
+  const policy = treasuryPolicy({ floorUsdc: 5, targetUsdc: 20, reserveChain });
+  const plan = planTopUp(onArc.toString(), policy);
+  const forced = amountFlag("--draw");
 
-  if (!reserveKey) {
-    console.error(`Would bridge $${plan.amountUsdc} USDC from ${reserveChain}, but SPIGOT_RESERVE_KEY is not set.`);
+  console.log(`\n  spendable on Arc: $${unitsToUsdc(onArc.toString()).toFixed(6)} USDC`);
+  console.log(`  decision:         ${plan.needed ? "draw" : "hold"} - ${plan.reason}\n`);
+
+  if (!plan.needed && !forced) {
+    console.log("Nothing to do. The agent tops itself up only when it has to.");
+    console.log("To exercise the draw anyway:  npm run topup -- --draw 2");
+    return;
+  }
+  if (forced && !plan.needed) {
+    console.log(`Drawing $${forced} anyway, because --draw was asked for.\n`);
+  }
+  plan.amountUsdc = forced ?? plan.amountUsdc;
+
+  if (BigInt(balance.totalUnits) <= 0n) {
+    console.error("The unified balance is empty, so there is nothing to draw from.");
+    console.error(`Fund it first:  npm run topup -- --fund 10   (from ${reserveChain})`);
     process.exitCode = 1;
     return;
   }
 
-  console.log(`Bridging $${plan.amountUsdc} USDC from ${reserveChain} to Arc over CCTP.\n`);
+  console.log(`Drawing $${plan.amountUsdc} USDC onto Arc. Auto-allocation picks the source chains.\n`);
 
-  const result = await topUpArc({
-    reservePrivateKey: reserveKey,
+  const result = await drawToArc({
+    privateKey: key,
     arcAddress,
-    policy,
     amountUsdc: plan.amountUsdc,
-    onStep: (step) => {
-      const link = step.explorerUrl ? `  ${step.explorerUrl}` : "";
-      console.log(`  ${step.name}: ${step.state}${link}`);
-    },
+    onStep: (s) => console.log(`  ${s.name} on ${s.chain}`),
   });
 
-  console.log(`\nBridge ${result.state}. Steps:`);
-  for (const step of result.steps) {
-    console.log(`  ${step.name}: ${step.state}${step.explorerUrl ? `  ${step.explorerUrl}` : ""}`);
-  }
-
-  if (result.state !== "success") process.exitCode = 1;
+  const after = await new ArcEoaSettlementProvider().balanceUnits();
+  console.log(`\nDrew $${result.amountUsdc} USDC${result.sources.length ? ` from ${result.sources.join(", ")}` : ""}.`);
+  console.log(`  spendable on Arc: $${unitsToUsdc(after.toString()).toFixed(6)} USDC`);
+  console.log("\nNo signer on Arc was needed: Circle's Forwarder submitted the mint.");
 }
 
 await main();

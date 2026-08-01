@@ -21,8 +21,8 @@
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.14.0",
-    "@circle-fin/bridge-kit": "^1.12.1",
     "@circle-fin/developer-controlled-wallets": "^10.6.0",
+    "@circle-fin/unified-balance-kit": "^1.3.1",
     "@circle-fin/x402-batching": "^3.2.0",
     "@x402/core": "^2.20.0",
     "@x402/evm": "^2.20.0",

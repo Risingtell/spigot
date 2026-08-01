@@ -353,3 +353,52 @@ test("a target at or below the floor is rejected", () => {
     /above the floor/,
   );
 });
+
+test("a top-up asks for the shortfall to the target, not the shortfall to the floor", () => {
+  // The distinction matters: refilling only to the floor would leave the agent one
+  // settlement away from being below it again, and topping up costs a Gateway fee
+  // each time. It refills to the target so the next draw is far away.
+  const policy = treasuryPolicy({ floorUsdc: 5, targetUsdc: 20, reserveChain: "Base_Sepolia" });
+  const plan = planTopUp(usdcToUnits(4.9), policy);
+  assert.equal(plan.needed, true);
+  assert.equal(plan.amountUsdc, "15.100000");
+  assert.ok(Number(plan.amountUsdc) > 20 - 5 - 0.2, "should refill to the target, not just clear the floor");
+});
+
+test("a balance exactly at the floor is not topped up", () => {
+  // The floor is the point at which a top-up becomes necessary, not the point at
+  // which it becomes overdue, so the comparison has to be inclusive or the agent
+  // would draw on itself one settlement early, every time.
+  const policy = treasuryPolicy({ floorUsdc: 5, targetUsdc: 20, reserveChain: "Base_Sepolia" });
+  assert.equal(planTopUp(usdcToUnits(5), policy).needed, false);
+  assert.equal(planTopUp(usdcToUnits(4.999999), policy).needed, true);
+});
+
+// ---------------------------------------------------------------------------
+// Unified balance
+// ---------------------------------------------------------------------------
+
+test("the unified balance is the sum of every chain, and the policy reads that one number", () => {
+  // The whole point of the rewrite: a budget spread over several chains is not one
+  // budget. Whatever the per-chain split, the agent's spendable total is the sum,
+  // and it is that total a plan has to be made against.
+  const perChain = [
+    { chain: "Arc_Testnet", units: "1600350" },
+    { chain: "Base_Sepolia", units: "8000000" },
+    { chain: "Optimism_Sepolia", units: "400000" },
+  ];
+  const total = perChain.reduce((sum, row) => sum + BigInt(row.units), 0n);
+  assert.equal(total.toString(), "10000350");
+  assert.equal(unitsToUsdc(total.toString()), 10.00035);
+
+  // No single chain could fund this draw; the unified balance can, which is
+  // exactly the case a per-chain reserve gets wrong.
+  const policy = treasuryPolicy({ floorUsdc: 5, targetUsdc: 10, reserveChain: "Base_Sepolia" });
+  const plan = planTopUp(usdcToUnits(1), policy);
+  assert.equal(plan.amountUsdc, "9.000000");
+  assert.ok(
+    BigInt(usdcToUnits(Number(plan.amountUsdc))) <= total,
+    "the draw must be fundable from the unified balance even though no one chain holds it",
+  );
+  assert.ok(perChain.every((row) => BigInt(row.units) < BigInt(usdcToUnits(Number(plan.amountUsdc)))));
+});

@@ -54,8 +54,9 @@ const CAPABILITIES: [string, string][] = [
   ["Per-second settlement", "USDC on Arc, sub-second finality"],
   ["Provable settlement", "Explicit ERC-20 transfer via Circle contract execution or viem"],
   ["Settlement cadence", "Arc stable-fee design, USDC as the gas token"],
-  ["Refilling across chains", "CCTP v2 through Circle Bridge Kit, Arc domain 26"],
-  ["Minting with no signer on Arc", "Circle Forwarder"],
+  ["One balance across chains", "Circle Unified Balance Kit over Gateway v1"],
+  ["Choosing where to draw from", "spend() auto-allocation, burn intents signed over EIP-712"],
+  ["Minting with no signer or gas on Arc", "Circle Forwarder"],
   ["Payment envelope", "x402 and Circle Gateway"],
   ["The streaming layer", "meter402, published npm SDK"],
 ];

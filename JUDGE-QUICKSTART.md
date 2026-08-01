@@ -91,11 +91,12 @@ than it settled.
 npm test
 ```
 
-21 tests over the rules that move money: unit conversion between Arc's 18-decimal
+24 tests over the rules that move money: unit conversion between Arc's 18-decimal
 gas view and the 6-decimal billing view, the economical settlement floor, the
 budget invariant, the guarantee that a provider is never left holding unpaid
 delivered time, the refusal to retry a settlement that may still be in flight, and
-the treasury top-up rule.
+the treasury rules, including that a draw is fundable from the agent's balance
+across chains even when no single chain holds enough.
 
 ## What to look at in the code
 
@@ -104,7 +105,7 @@ the treasury top-up rule.
 | How does the agent decide, and when does it settle? | [`src/agent.ts`](./src/agent.ts) |
 | Where does the settlement cost come from? | [`src/arc-gas.ts`](./src/arc-gas.ts) |
 | How does a block become real USDC on Arc? | [`src/arc-eoa.ts`](./src/arc-eoa.ts), [`src/circle-wallet.ts`](./src/circle-wallet.ts) |
-| How does the agent refill itself across chains? | [`src/treasury.ts`](./src/treasury.ts) |
+| How does the agent hold one balance across chains, and refill Arc from it? | [`src/treasury.ts`](./src/treasury.ts) |
 | How is any of this checkable? | [`src/verify.ts`](./src/verify.ts) |
 
 ## The one-line version

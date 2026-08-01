@@ -241,7 +241,7 @@ npm install && npm run verify`}
               ["Direct on-chain settlement", "USDC on Arc, explicit ERC-20 transfer so it is provable"],
               ["Wallets", "Circle developer-controlled wallets, or a plain Arc key"],
               ["Settlement cadence", "Arc stable-fee design, USDC as the gas token"],
-              ["Refilling across chains", "CCTP v2 through Circle Bridge Kit, Arc domain 26"],
+              ["One balance across chains", "Circle Unified Balance Kit, spend() auto-allocation"],
               ["The streaming layer", "meter402, our own npm package, MIT"],
             ] as [string, string][]
           ).map(([flow, cap]) => (
