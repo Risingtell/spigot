@@ -15,6 +15,12 @@ import { MemoryStore, StreamingMeter, type SettlementProvider, type TickQuote } 
 import { StreamingAgent, type TickContext } from "../src/agent";
 import { USDC_UNIT, unitsToUsdc, usdcToUnits, weiToUnits } from "../src/arc";
 import { minEconomicSettlementUnits, overheadRatio, settlementCostFrom } from "../src/arc-gas";
+import {
+  ACTIVE_MARKET_TRADES_PER_SECOND,
+  MIN_MEANINGFUL_TRADES_PER_SECOND,
+  activityTarget,
+  blockValueUnits,
+} from "../src/market";
 import { planTopUp, treasuryPolicy } from "../src/treasury";
 
 /** Records what it was asked to settle, so tests can assert on money moved. */
@@ -372,6 +378,41 @@ test("a balance exactly at the floor is not topped up", () => {
   const policy = treasuryPolicy({ floorUsdc: 5, targetUsdc: 20, reserveChain: "Base_Sepolia" });
   assert.equal(planTopUp(usdcToUnits(5), policy).needed, false);
   assert.equal(planTopUp(usdcToUnits(4.999999), policy).needed, true);
+});
+
+// ---------------------------------------------------------------------------
+// The value signal's own calibration
+// ---------------------------------------------------------------------------
+
+test("the activity bar is what the market was doing, not a number from July", () => {
+  // A fixed absolute threshold was the original design and it was wrong: the same
+  // feed measured 2 to 10 trades/sec when it was calibrated and about 0.7 later,
+  // so a hardcoded 6 would refuse the feed in any ordinary quiet hour. The bar is
+  // now whatever the agent measured before it opened the gate.
+  assert.equal(activityTarget(3), 3);
+  assert.equal(activityTarget(0.7), 0.7);
+});
+
+test("a dead market cannot set itself a bar of zero and then clear it", () => {
+  // Without a floor, a relative measure argues that no trades against a baseline
+  // of no trades is the market performing exactly as promised.
+  assert.equal(activityTarget(0), MIN_MEANINGFUL_TRADES_PER_SECOND);
+  assert.ok(blockValueUnits({ tradesPerSecond: 0, costUnits: 50_000n, fullValueTps: activityTarget(0) }) === 0);
+});
+
+test("a frantic opening minute cannot set a bar the session then fails", () => {
+  // Capped at the busy-market reference, so an unrepresentative burst at the
+  // moment the gate opens does not make everything after it look like a lull.
+  assert.equal(activityTarget(500), ACTIVE_MARKET_TRADES_PER_SECOND);
+});
+
+test("a block is worth paying for while flow holds up, and not once it falls away", () => {
+  const bar = activityTarget(4);
+  const cost = 50_000n;
+  // Holding at the bar: worth more than it costs, so the agent keeps buying.
+  assert.ok(blockValueUnits({ tradesPerSecond: 4, costUnits: cost, fullValueTps: bar }) > Number(cost));
+  // Flow halves: worth less than it costs, so the gate closes.
+  assert.ok(blockValueUnits({ tradesPerSecond: 2, costUnits: cost, fullValueTps: bar }) < Number(cost));
 });
 
 // ---------------------------------------------------------------------------

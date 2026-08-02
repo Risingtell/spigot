@@ -10,8 +10,18 @@ The panel at the top of the console is Arc's fee market, read live from the publ
 RPC when the page loads. It shows what one settlement costs right now and how
 often that makes settling worthwhile at three different stream prices.
 
-Press **Run the agent** on any of the three scenarios. Each one runs the real agent
-loop server-side against that live fee reading:
+Pick a rail first. **Direct on Arc** broadcasts a transaction per settlement, so
+the agent batches until the chain fee is a rounding error. **Gas free** signs
+off-chain and lets Circle Gateway batch it, so the agent buys every tick for
+nothing and the response to each payment is the next chunk of the feed. Same
+agent, same budget, same value signal on both.
+
+On the gas-free rail the default is **Live market signal**: the agent measures BTC
+trade flow for four seconds, holds the feed to whatever it measured, and stops when
+flow falls away. How many blocks it buys therefore depends on what the market is
+doing when you click, which is the product working rather than a script running.
+
+Press **Run the agent**. Each scenario runs the real agent loop server-side:
 
 | Scenario | What it shows |
 | --- | --- |
@@ -91,12 +101,13 @@ than it settled.
 npm test
 ```
 
-24 tests over the rules that move money: unit conversion between Arc's 18-decimal
+28 tests over the rules that move money: unit conversion between Arc's 18-decimal
 gas view and the 6-decimal billing view, the economical settlement floor, the
 budget invariant, the guarantee that a provider is never left holding unpaid
-delivered time, the refusal to retry a settlement that may still be in flight, and
-the treasury rules, including that a draw is fundable from the agent's balance
-across chains even when no single chain holds enough.
+delivered time, the refusal to retry a settlement that may still be in flight, the
+treasury rules including that a draw is fundable from the agent's balance across
+chains when no single chain holds enough, and the value signal's own calibration,
+including that a dead market cannot set itself a bar of zero and then clear it.
 
 ## What to look at in the code
 

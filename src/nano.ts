@@ -58,10 +58,26 @@ export function nanoConfigured(): boolean {
   return Boolean(process.env.SPIGOT_ARC_KEY);
 }
 
+/** One paid block: what was bought, and the chunk that arrived because of it. */
+export interface DeliveredChunk {
+  units: string;
+  settlement: string;
+  chunk: unknown;
+}
+
 export class NanoSettlementProvider implements SettlementProvider {
   readonly network = ARC_TESTNET_CAIP2;
   readonly mock = false;
   readonly address: string;
+
+  /**
+   * Every chunk the agent actually received, in order.
+   *
+   * Worth keeping rather than discarding, because on this rail the response to
+   * the payment IS the delivery. A caller that shows these next to the payments
+   * is showing the gate working, not describing it.
+   */
+  readonly delivered: DeliveredChunk[] = [];
 
   private readonly gateway: GatewayClient;
   private readonly sellerBaseUrl: string;
@@ -154,6 +170,12 @@ export class NanoSettlementProvider implements SettlementProvider {
     if (result.amount !== units) {
       throw new Error(`Gateway settled ${result.amount} units for a block owing ${units}.`);
     }
+
+    this.delivered.push({
+      units: units.toString(),
+      settlement: result.transaction ?? "",
+      chunk: result.data?.chunk ?? null,
+    });
 
     // Gateway returns a settlement id immediately; the batched on-chain transfer
     // that carries it lands later. Record the id either way, and only link out to

@@ -18,7 +18,7 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
-| Tests | **24 passing**, over the rules that move money |
+| Tests | **28 passing**, over the rules that move money |
 | SDK | built on [meter402](https://www.npmjs.com/package/meter402), published on npm |
 
 Those numbers are a floor, not a boast, and they are the wrong way round on purpose:
@@ -126,7 +126,7 @@ No keys, no wallet, no chain writes:
 npm install
 npm run demo      # an agent holds a stream, batches settlement, stops itself
 npm run verify    # re-derive the fee market and any settled totals from Arc
-npm test          # 24 tests over the rules that move money
+npm test          # 28 tests over the rules that move money
 ```
 
 `npm run verify` is the one to read closely. It takes Arc's gas price live, prices

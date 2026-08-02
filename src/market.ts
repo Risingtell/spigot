@@ -124,27 +124,65 @@ export class MarketWindow {
 }
 
 /**
- * Trades per second at which a block is worth the full multiple of its price.
- * Calibrated against a real quiet-market window that ran between 2 and 10 trades
- * per second, so an ordinary market clears the bar and a lull does not.
+ * Trades per second that counted as a busy market when this was first calibrated,
+ * against a window running 2 to 10 trades per second.
+ *
+ * Kept as a reference point, and no longer used as the bar on its own, because a
+ * fixed absolute threshold turned out to be the wrong shape. Re-measured on
+ * 2026-08-02 the same feed was running about 0.7 trades per second, with four
+ * consecutive one-second samples showing no trades at all. That is roughly ten
+ * times quieter than the calibration, and against a hardcoded 6 the agent would
+ * refuse to hold the feed in any ordinary quiet hour, which is not a judgement
+ * about value, it is a stale constant.
  */
 export const ACTIVE_MARKET_TRADES_PER_SECOND = 6;
+
+/**
+ * Below this the market is not quiet, it is asleep, and no relative measure should
+ * be able to argue otherwise. It stops a dead market from setting itself a bar of
+ * zero and then clearing it.
+ */
+export const MIN_MEANINGFUL_TRADES_PER_SECOND = 0.5;
+
+/**
+ * The bar the agent holds the feed to: what the market was actually doing when it
+ * opened the gate, not what a market was doing in July.
+ *
+ * The agent measures the baseline itself, before it buys anything, and then keeps
+ * buying while flow holds up against it. That is the honest reading of what this
+ * feed is for: an agent paying by the second for liquidation risk is paying for
+ * information flow, and the moment to stop is when the flow it signed up for
+ * falls away, whatever the absolute number happens to be that day.
+ *
+ * Bounded on both sides. It cannot drop below the floor above, so a dead market
+ * stays dead, and it is capped at the busy-market reference, so an unusually
+ * frantic opening minute does not set a bar the rest of the session cannot clear.
+ */
+export function activityTarget(baselineTradesPerSecond: number): number {
+  return Math.min(
+    ACTIVE_MARKET_TRADES_PER_SECOND,
+    Math.max(MIN_MEANINGFUL_TRADES_PER_SECOND, baselineTradesPerSecond),
+  );
+}
 
 /**
  * What a block of this feed is worth to the agent, in USDC smallest units.
  *
  * Activity is the value. Kept linear on purpose so the decision stays legible:
- * at or above `fullValueTps` a block is worth `valueMultiple` times its cost, and
- * a sleeping market drives it to zero and closes the gate.
+ * at or above the target a block is worth `valueMultiple` times its cost, and a
+ * market that goes quiet relative to how it opened drives it to zero and closes
+ * the gate.
  */
 export function blockValueUnits(opts: {
   tradesPerSecond: number;
   costUnits: bigint;
+  /** The bar to hold against. Defaults to the busy-market reference. */
   fullValueTps?: number;
   valueMultiple?: number;
 }): number {
   const fullValueTps = opts.fullValueTps ?? ACTIVE_MARKET_TRADES_PER_SECOND;
   const valueMultiple = opts.valueMultiple ?? 1.6;
+  if (!(fullValueTps > 0)) return 0;
   const ratio = Math.min(1, Math.max(0, opts.tradesPerSecond / fullValueTps));
   return Number(opts.costUnits) * ratio * valueMultiple;
 }

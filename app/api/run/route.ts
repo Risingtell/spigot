@@ -4,19 +4,29 @@ import { StreamingAgent, type TickContext } from "@/src/agent";
 import { ARC_TESTNET_CAIP2, unitsToUsdc } from "@/src/arc";
 import { economicSettlementSeconds, fetchSettlementCost, minEconomicSettlementUnits } from "@/src/arc-gas";
 import { ArcEoaSettlementProvider, arcKeyConfigured } from "@/src/arc-eoa";
+import { NanoSettlementProvider, nanoConfigured } from "@/src/nano";
+import { MarketWindow, activityTarget, blockValueUnits, fetchTicker } from "@/src/market";
+import { streamById } from "@/src/streams";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** The gas-free rail primes a market window and then buys once a second. */
+export const maxDuration = 60;
 
 /**
  * Runs the real Spigot agent loop so anyone can click and watch an autonomous agent
  * hold a metered stream, pay for it, and shut its own gate.
  *
- * When this deployment holds an Arc key, every settlement below is a real confirmed
- * USDC transfer on Arc Testnet with a live explorer link. Without one it runs the
- * identical loop against a simulated settlement provider. Either way the fee market
- * driving the cadence is read live from Arc, and the response says which mode it
- * ran in so the page never has to guess.
+ * Two rails, one agent. On the direct rail every settlement is a confirmed USDC
+ * transfer on Arc with an explorer link, and the agent has to batch because the
+ * chain fee is real. On the gas-free rail it signs off-chain, Circle Gateway
+ * settles and batches, and the agent buys every single tick at a fraction of a
+ * cent - and the response to each payment IS the next chunk of the stream, so the
+ * gate is the payment rather than something layered over it.
+ *
+ * The budget, the rate ceiling and the value signal do not change between them.
+ * That is the entire point: the rail decides what a payment costs, the agent
+ * decides whether it is worth making.
  */
 
 const RATE_PER_SECOND = "50000"; // $0.05/sec of held capacity
@@ -38,13 +48,12 @@ const SIMULATED_PROVIDER = "0xProviderTreasury000000000000000000000000";
  * only number that survives a cold start is the one on the chain, so the real
  * floor is the agent's own balance: below the reserve, live settlement is simply
  * not offered. That holds however many instances are running.
- *
- * Anything a guard blocks still runs, just simulated, so a judge always sees the
- * loop work rather than an error.
  */
 const MIN_LIVE_GAP_MS = 15_000;
 /** Stop settling live once the wallet falls to this, so the demo cannot drain itself. */
 const RESERVE_UNITS = 5_000_000n; // $5 of testnet USDC
+/** The same idea for the Gateway balance the gas-free rail spends from. */
+const GATEWAY_RESERVE_UNITS = 200_000n; // $0.20
 /** Re-reading the balance every click would be its own rate-limit problem. */
 const BALANCE_TTL_MS = 60_000;
 
@@ -113,16 +122,158 @@ const SCENARIOS: Record<string, Scenario> = {
   },
 };
 
-export async function POST(req: Request) {
-  let scenarioId = "stale";
-  try {
-    const body = (await req.json()) as { scenario?: string };
-    if (body.scenario && SCENARIOS[body.scenario]) scenarioId = body.scenario;
-  } catch {
-    // no body - use default
-  }
-  const scenario = SCENARIOS[scenarioId];
+/** Shape shared by both rails, so the page renders one thing either way. */
+function settlementRows(events: { amount: string; seconds: number; txHash: string; explorerUrl?: string }[], costUnits: string) {
+  let cumulative = 0n;
+  return events.map((e, i) => {
+    cumulative += BigInt(e.amount);
+    return {
+      n: i + 1,
+      seconds: e.seconds,
+      amountUsd: unitsToUsdc(e.amount),
+      cumulativeUsd: unitsToUsdc(cumulative.toString()),
+      // What Arc's fee took out of this one settlement. Zero on the gas-free rail.
+      feeSharePct: Number(costUnits) === 0 ? 0 : (Number(costUnits) / Number(e.amount)) * 100,
+      txHash: e.txHash,
+      explorerUrl: e.explorerUrl,
+    };
+  });
+}
 
+// ---------------------------------------------------------------------------
+// The gas-free rail: the agent buys a real market feed from Spigot's own seller
+// ---------------------------------------------------------------------------
+
+const NANO_BUDGET_UNITS = "400000"; // $0.40
+const NANO_MAX_TICKS = 8;
+
+/**
+ * The gas-free rail offers the same choice the direct rail does, for the same
+ * reason: what a judge needs to see is the policy, and the policy is only visible
+ * when you can vary the thing it rules on.
+ *
+ * `live` is the real one and the default. It hands the agent the actual BTC trade
+ * flow and lets the decision fall where it falls, which means the number of blocks
+ * it buys depends on what the market is doing at the moment of the click. That is
+ * the product working, not a flaw, but it does mean a quiet hour produces a short
+ * run. The scenario curves are the same stated value curves the direct rail uses,
+ * so the rail itself can be watched settling repeatedly regardless of the market.
+ */
+async function runNano(origin: string, scenario: Scenario | null) {
+  const stream = streamById("btc-risk-feed");
+  if (!stream) throw new Error("btc-risk-feed is not in the stream catalogue.");
+  if (!LIVE_PROVIDER) return { unavailable: "this deployment has no provider address configured" };
+  if (!nanoConfigured()) return { unavailable: "this deployment holds no agent key, so nothing can be signed" };
+
+  const budget = BigInt(NANO_BUDGET_UNITS);
+  let spent = 0n;
+
+  const settlement = new NanoSettlementProvider({
+    sellerBaseUrl: origin,
+    // Gateway's own hook, carrying the same budget the agent enforces, so no code
+    // path can pay around the policy. Kept in step with what has actually settled.
+    policyCheck: (amountUnits) => {
+      const amount = BigInt(amountUnits);
+      if (amount <= 0n) return "a block must owe something";
+      if (spent + amount > budget) return `block of ${amount} would breach the ${budget} budget`;
+      return null;
+    },
+  });
+
+  const available = await settlement.gatewayUnits();
+  if (available < GATEWAY_RESERVE_UNITS) {
+    return {
+      unavailable: `the agent's Gateway balance is down to $${unitsToUsdc(available.toString()).toFixed(6)}, below the reserve it keeps`,
+    };
+  }
+
+  const store = new MemoryStore([
+    {
+      id: stream.id,
+      title: stream.title,
+      description: stream.description,
+      ratePerSecond: stream.ratePerSecond,
+      asset: "USDC",
+      provider: stream.provider,
+      payTo: LIVE_PROVIDER,
+    },
+  ]);
+  const meter = new StreamingMeter(store, { payTo: LIVE_PROVIDER, maxTickSeconds: 60, network: ARC_TESTNET_CAIP2 });
+
+  // No settlement economics: gas per block is zero on this rail, so there is
+  // nothing to batch around and every metered interval can settle on its own.
+  const agent = new StreamingAgent(meter, settlement, settlement.address, {
+    budgetUnits: NANO_BUDGET_UNITS,
+    maxRatePerSecondUnits: "100000",
+    objective: "Hold the BTC risk feed only while the market is actually moving.",
+  });
+
+  /**
+   * Observe before buying, and long enough for the reading to mean something. One
+   * sample cannot express a rate at all, and a rate of well under one trade a
+   * second cannot be estimated across a second and a half, so the window is primed
+   * over about four seconds and that measurement becomes the bar the rest of the
+   * run is held to.
+   */
+  const window = new MarketWindow(12);
+  for (let i = 0; i < 4; i++) {
+    window.add(await fetchTicker());
+    if (i < 3) await new Promise((r) => setTimeout(r, 1200));
+  }
+  const openedAt = window.tradesPerSecond();
+  const target = activityTarget(openedAt);
+  let lastTps = openedAt;
+
+  const valueSignal = async (ctx: TickContext): Promise<number> => {
+    spent = ctx.spentUnits;
+    try {
+      window.add(await fetchTicker());
+      lastTps = window.tradesPerSecond();
+    } catch {
+      // A missed sample is not a reason to change the decision; hold the last
+      // reading rather than inventing a number in either direction.
+    }
+    if (scenario) return Number(ctx.marginalUnits) * (scenario.base - scenario.slope * ctx.tick);
+    return blockValueUnits({ tradesPerSecond: lastTps, costUnits: ctx.marginalUnits, fullValueTps: target });
+  };
+
+  const result = await agent.stream(stream.id, { valueSignal, tickIntervalMs: 1000, maxTicks: NANO_MAX_TICKS });
+  const events = meter.impact().recent.slice().reverse();
+
+  return {
+    settlements: settlementRows(events, "0"),
+    delivered: settlement.delivered.map((d, i) => ({ n: i + 1, ...d })),
+    market: {
+      openedAtTradesPerSecond: Number(openedAt.toFixed(2)),
+      closedAtTradesPerSecond: Number(lastTps.toFixed(2)),
+      /** The bar this run held itself to, measured before it bought anything. */
+      targetTradesPerSecond: Number(target.toFixed(2)),
+    },
+    decision: {
+      reason: result.closedReason,
+      settlements: result.settlements,
+      ticksMetered: result.ticksMetered,
+      spentUsd: unitsToUsdc(result.spentUnits),
+      feeSharePct: 0,
+    },
+    signal: scenario ? ("scenario" as const) : ("market" as const),
+    scenario: {
+      id: scenario?.id ?? "live",
+      label: scenario ? scenario.label : "Live market signal",
+      blurb: scenario
+        ? `${scenario.blurb} Bought gas free, one second at a time, against the real BTC feed.`
+        : "The agent buys a live BTC risk feed one second at a time, gas free, and holds it only while trade flow keeps up with what it measured before opening the gate. The response to each payment is the next chunk, so the gate is the payment.",
+      ratePerSecondUsd: unitsToUsdc(stream.ratePerSecond),
+      budgetUsd: unitsToUsdc(NANO_BUDGET_UNITS),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The direct rail: every settlement is its own transaction on Arc
+// ---------------------------------------------------------------------------
+
+async function runDirect(scenario: Scenario) {
   let provider: SettlementProvider = new MockSettlementProvider();
   let agentWallet = "agent-alpha-wallet";
   let heldBack: string | undefined;
@@ -158,12 +309,7 @@ export async function POST(req: Request) {
       payTo,
     },
   ]);
-
-  const meter = new StreamingMeter(store, {
-    payTo,
-    maxTickSeconds: 60,
-    network: ARC_TESTNET_CAIP2,
-  });
+  const meter = new StreamingMeter(store, { payTo, maxTickSeconds: 60, network: ARC_TESTNET_CAIP2 });
 
   // What one settlement costs on Arc right now. This is a live read, not a constant.
   const cost = await fetchSettlementCost();
@@ -196,28 +342,14 @@ export async function POST(req: Request) {
   }
 
   const events = meter.impact().recent.slice().reverse(); // oldest first
-  let cumulative = 0n;
-  const settlements = events.map((e, i) => {
-    cumulative += BigInt(e.amount);
-    return {
-      n: i + 1,
-      seconds: e.seconds,
-      amountUsd: unitsToUsdc(e.amount),
-      cumulativeUsd: unitsToUsdc(cumulative.toString()),
-      // What Arc's fee took out of this one settlement.
-      feeSharePct: (Number(cost.costUnits) / Number(e.amount)) * 100,
-      txHash: e.txHash,
-      explorerUrl: e.explorerUrl,
-    };
-  });
-
   const spentUnits = Number(result.spentUnits);
   const feeSharePct = result.settlements > 0 ? (Number(cost.costUnits) * result.settlements * 100) / spentUnits : 0;
 
-  return NextResponse.json({
-    mode: settlingLive ? "live" : "simulated",
+  return {
+    mode: settlingLive ? ("live" as const) : ("simulated" as const),
     agent: settlingLive ? agentWallet : undefined,
     heldBack,
+    settlements: settlementRows(events, cost.costUnits),
     scenario: {
       id: scenario.id,
       label: scenario.label,
@@ -232,7 +364,6 @@ export async function POST(req: Request) {
       minSettlementUsd: unitsToUsdc(minSettle.toString()),
       cadenceSeconds: economicSettlementSeconds(minSettle, RATE_PER_SECOND),
     },
-    settlements,
     decision: {
       reason: result.closedReason,
       settlements: result.settlements,
@@ -240,6 +371,41 @@ export async function POST(req: Request) {
       spentUsd: unitsToUsdc(result.spentUnits),
       feeSharePct,
     },
-    network: meter.impact().network,
-  });
+  };
+}
+
+export async function POST(req: Request) {
+  let scenarioId = "stale";
+  let rail: "direct" | "nano" = "direct";
+  let liveSignal = true;
+  try {
+    const body = (await req.json()) as { scenario?: string; rail?: string };
+    if (body.rail === "nano") rail = "nano";
+    if (body.scenario && SCENARIOS[body.scenario]) {
+      scenarioId = body.scenario;
+      liveSignal = false;
+    }
+  } catch {
+    // no body - use the defaults
+  }
+
+  if (rail === "nano") {
+    try {
+      const nano = await runNano(new URL(req.url).origin, liveSignal ? null : SCENARIOS[scenarioId]);
+      if ("unavailable" in nano) {
+        // Say why rather than quietly running something else. A rail that is not
+        // available is worth stating; a rail that pretends is worth nothing.
+        return NextResponse.json({ rail, mode: "unavailable", reason: nano.unavailable }, { status: 200 });
+      }
+      return NextResponse.json({ rail, mode: "live", network: ARC_TESTNET_CAIP2, ...nano });
+    } catch (err) {
+      return NextResponse.json(
+        { rail, mode: "unavailable", reason: (err as Error).message },
+        { status: 200 },
+      );
+    }
+  }
+
+  const direct = await runDirect(SCENARIOS[scenarioId]);
+  return NextResponse.json({ rail, network: ARC_TESTNET_CAIP2, ...direct });
 }

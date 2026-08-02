@@ -33,11 +33,40 @@ interface Fee {
   cadence?: { label: string; ratePerSecondUsd: number; settleEverySeconds: number }[];
 }
 
+interface Delivered {
+  n: number;
+  units: string;
+  settlement: string;
+  chunk: { price?: number; tradesPerSecond?: number; spreadBps?: number; observedAt?: string } | null;
+}
+interface Market {
+  openedAtTradesPerSecond: number;
+  closedAtTradesPerSecond: number;
+  targetTradesPerSecond: number;
+}
+interface Treasury {
+  available: boolean;
+  reason?: string;
+  spendableOnArcUsd?: number;
+  unified?: { totalUsd: number; chains: { chain: string; usd: number }[] };
+  policy?: { floorUsd: number; targetUsd: number };
+  decision?: { needed: boolean; reason: string; wouldDrawUsd: number };
+}
+
+type Rail = "direct" | "nano";
+
+const RAILS: { id: Rail; label: string; note: string }[] = [
+  { id: "direct", label: "Direct on Arc", note: "One transaction per settlement, so the agent batches until the fee is a rounding error." },
+  { id: "nano", label: "Gas free", note: "Signed off-chain, batched by Circle Gateway. Zero gas per block, so it settles every tick." },
+];
+
+/** The live-market run is the real one; the rest are the stated value curves. */
 const SCENARIOS = [
   { id: "stale", label: "Queue drains" },
   { id: "fresh", label: "Work keeps coming" },
   { id: "budget", label: "Tight budget" },
 ];
+const LIVE_SIGNAL = "live";
 
 const usd = (n: number) => `$${n.toFixed(6)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -51,6 +80,10 @@ export function Console() {
   const [fee, setFee] = useState<Fee | null>(null);
   const [mode, setMode] = useState<"live" | "simulated" | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [rail, setRail] = useState<Rail>("direct");
+  const [delivered, setDelivered] = useState<Delivered[]>([]);
+  const [market, setMarket] = useState<Market | null>(null);
+  const [treasury, setTreasury] = useState<Treasury | null>(null);
 
   // The fee market is read on load so the economics are on screen before anyone
   // presses anything. It is a live call to Arc, not a stored constant.
@@ -60,6 +93,12 @@ export function Console() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!cancelled && d) setFee(d);
+      })
+      .catch(() => undefined);
+    fetch("/api/treasury")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d) setTreasury(d);
       })
       .catch(() => undefined);
     return () => {
@@ -73,20 +112,29 @@ export function Console() {
     setDecision(null);
     setMeta(null);
     setFailure(null);
+    setDelivered([]);
+    setMarket(null);
     try {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario }),
+        // On the gas-free rail the default is the real market signal, so no
+        // scenario is sent unless one was explicitly picked.
+        body: JSON.stringify(scenario === LIVE_SIGNAL ? { rail } : { rail, scenario }),
       });
       if (!res.ok) throw new Error(`the run endpoint answered ${res.status}`);
       const data = await res.json();
+      if (data.mode === "unavailable") throw new Error(data.reason ?? "this rail is not available on this deployment");
       if (!Array.isArray(data.settlements)) throw new Error("the run returned no settlements to replay");
       setMeta(data.scenario);
       setMode(data.mode === "live" ? "live" : "simulated");
+      if (data.market) setMarket(data.market);
+      const chunks: Delivered[] = Array.isArray(data.delivered) ? data.delivered : [];
       if (data.fee) setFee((f) => ({ ...(f ?? {}), ...data.fee }));
       for (const s of data.settlements as Settlement[]) {
         setPlayed((p) => [...p, s]);
+        const chunk = chunks[s.n - 1];
+        if (chunk) setDelivered((d) => [...d, chunk]);
         await sleep(650);
       }
       setDecision(data.decision);
@@ -140,8 +188,48 @@ export function Console() {
         )}
       </div>
 
-      {/* scenario picker */}
-      <div className="mt-6 flex flex-wrap gap-2">
+      {/* which rail the same agent settles on */}
+      <div className="mt-6">
+        <p className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-white/50">
+          Same agent, same policy, two rails
+        </p>
+        <div className="mt-3 grid gap-px bg-white/10 sm:grid-cols-2">
+          {RAILS.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => {
+                setRail(r.id);
+                setScenario(r.id === "nano" ? LIVE_SIGNAL : "stale");
+              }}
+              disabled={live}
+              className={`p-4 text-left transition disabled:opacity-50 ${
+                rail === r.id ? "bg-[color:var(--amber)] text-black" : "bg-black/40 text-white/70 hover:bg-black/20"
+              }`}
+            >
+              <span className="block text-[0.72rem] font-bold uppercase tracking-[0.16em]">{r.label}</span>
+              <span className={`mt-1 block text-[0.78rem] leading-snug ${rail === r.id ? "text-black/75" : "text-white/45"}`}>
+                {r.note}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* what the agent is ruling on */}
+      <div className="mt-5 flex flex-wrap gap-2">
+        {rail === "nano" && (
+          <button
+            onClick={() => setScenario(LIVE_SIGNAL)}
+            disabled={live}
+            className={`border px-4 py-2 text-[0.68rem] font-bold uppercase tracking-[0.16em] transition disabled:opacity-50 ${
+              scenario === LIVE_SIGNAL
+                ? "border-[color:var(--amber)] bg-[color:var(--amber)] text-black"
+                : "border-white/25 text-white/70 hover:border-white/60 hover:text-white"
+            }`}
+          >
+            Live market signal
+          </button>
+        )}
         {SCENARIOS.map((s) => (
           <button
             key={s.id}
@@ -189,10 +277,23 @@ export function Console() {
 
       {mode && !failure && (
         <p className="mt-3 text-[0.8rem] text-white/55">
-          {mode === "live"
-            ? "Settling real USDC on Arc Testnet."
-            : "Settling against a simulated provider on this run."}
+          {rail === "nano"
+            ? "Signed off-chain and settled by Circle Gateway. No gas was paid on any block below."
+            : mode === "live"
+              ? "Settling real USDC on Arc Testnet."
+              : "Settling against a simulated provider on this run."}
         </p>
+      )}
+
+      {market && (
+        <div className="mt-4 border-l-4 border-[color:var(--green)] bg-white/[0.04] px-4 py-3 text-[0.82rem] leading-relaxed text-white/70">
+          The agent watched the market before opening the gate and measured{" "}
+          <span className="tabular font-mono text-white">{market.openedAtTradesPerSecond.toFixed(2)}</span> trades/sec,
+          so it held the feed to a bar of{" "}
+          <span className="tabular font-mono text-white">{market.targetTradesPerSecond.toFixed(2)}</span>. Flow was{" "}
+          <span className="tabular font-mono text-white">{market.closedAtTradesPerSecond.toFixed(2)}</span> when it
+          stopped. The bar is measured, not hardcoded, so the same policy works in a busy hour and a dead one.
+        </div>
       )}
 
       {/* live stat row */}
@@ -233,7 +334,9 @@ export function Console() {
                   {String(t.n).padStart(2, "0")} · {t.seconds.toFixed(2)}s held
                 </span>
                 <span className="tabular text-[color:var(--amber)]">+{usd(t.amountUsd)}</span>
-                <span className="tabular hidden text-white/45 sm:inline">fee {t.feeSharePct.toFixed(1)}%</span>
+                <span className="tabular hidden text-white/45 sm:inline">
+                  {rail === "nano" ? "gas $0.00" : `fee ${t.feeSharePct.toFixed(1)}%`}
+                </span>
                 {t.explorerUrl ? (
                   <a
                     href={t.explorerUrl}
@@ -246,6 +349,17 @@ export function Console() {
                 ) : (
                   <span className="truncate text-xs text-white/30">{t.txHash.slice(0, 10)}…</span>
                 )}
+                {(() => {
+                  // On the gas-free rail the response to the payment IS the chunk,
+                  // so show what actually arrived rather than only what was paid.
+                  const d = delivered.find((x) => x.n === t.n);
+                  if (!d?.chunk?.price) return null;
+                  return (
+                    <span className="tabular hidden text-[color:var(--green)] md:inline">
+                      BTC ${d.chunk.price.toLocaleString()}
+                    </span>
+                  );
+                })()}
               </li>
             ))}
             {live && (
@@ -270,20 +384,70 @@ export function Console() {
           </p>
           <p className="mt-2 text-[0.9rem] leading-relaxed text-white/65">
             Reason: <span className="text-white">{decision.reason}</span>. Paid{" "}
-            <span className="tabular font-mono text-white">{usd(decision.spentUsd)}</span>, of which Arc took{" "}
-            <span className="tabular font-mono text-white">{decision.feeSharePct.toFixed(1)}%</span> in fees. The rest
-            of the budget stays with the agent. No human in the loop.
+            <span className="tabular font-mono text-white">{usd(decision.spentUsd)}</span>
+            {rail === "nano" ? (
+              <>
+                , and <span className="tabular font-mono text-white">$0.00</span> of it went to gas, because Circle
+                batched the settlement instead of broadcasting one per block.
+              </>
+            ) : (
+              <>
+                , of which Arc took{" "}
+                <span className="tabular font-mono text-white">{decision.feeSharePct.toFixed(1)}%</span> in fees.
+              </>
+            )}{" "}
+            The rest of the budget stays with the agent. No human in the loop.
           </p>
         </div>
       )}
 
       {meta && (
         <p className="mt-4 text-[0.8rem] leading-relaxed text-white/45">
-          {meta.blurb} Capacity priced at {usd(meta.ratePerSecondUsd)}/sec.{" "}
-          {mode === "live"
-            ? "Every settlement above is a confirmed USDC transfer on Arc Testnet. Follow any hash to the explorer, or re-derive the whole set with npm run verify."
-            : "The loop, the fee market and the cadence are identical to the live path in src/run-live.ts, which moves real USDC on Arc."}
+          {meta.blurb} Priced at {usd(meta.ratePerSecondUsd)}/sec.{" "}
+          {rail === "nano"
+            ? "Each row above is a block the agent paid for off-chain and received the next chunk of the feed in return, so the payment is the gate."
+            : mode === "live"
+              ? "Every settlement above is a confirmed USDC transfer on Arc Testnet. Follow any hash to the explorer, or re-derive the whole set with npm run verify."
+              : "The loop, the fee market and the cadence are identical to the live path in src/run-live.ts, which moves real USDC on Arc."}
         </p>
+      )}
+
+      {/* what the agent can spend, and where it actually sits */}
+      {treasury?.available && treasury.unified && (
+        <div className="mt-6 border border-white/15 bg-white/[0.03] p-4">
+          <p className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-white/50">
+            The agent&apos;s own treasury, read live from Arc and Circle
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-px bg-white/10 sm:grid-cols-3">
+            <Tile label="Spendable on Arc" value={`$${(treasury.spendableOnArcUsd ?? 0).toFixed(2)}`} />
+            <Tile label="Unified balance" value={`$${treasury.unified.totalUsd.toFixed(2)}`} />
+            <Tile label="Tops up below" value={`$${(treasury.policy?.floorUsd ?? 0).toFixed(2)}`} />
+          </div>
+          <p className="mt-3 text-[0.82rem] leading-relaxed text-white/60">
+            Spendable on Arc is what a settlement comes out of. The unified balance is everything the agent holds
+            through Circle Gateway,{" "}
+            {treasury.unified.chains.length > 0 ? (
+              <>
+                currently across{" "}
+                {treasury.unified.chains.map((c, i, all) => (
+                  <span key={c.chain}>
+                    <span className="text-white">{c.chain.replace(/_/g, " ")}</span>
+                    {i < all.length - 1 ? ", " : ""}
+                  </span>
+                ))}
+              </>
+            ) : (
+              "on any chain"
+            )}
+            . When Arc falls below the floor the agent draws from that on its own, and Circle&apos;s auto-allocation
+            picks the source chains rather than the agent naming one.{" "}
+            <span className="text-white/80">
+              {treasury.decision?.needed
+                ? `Right now it would draw $${(treasury.decision.wouldDrawUsd ?? 0).toFixed(2)}.`
+                : "Right now it is above the floor, so it holds."}
+            </span>
+          </p>
+        </div>
       )}
     </div>
   );
