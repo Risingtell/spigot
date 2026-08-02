@@ -17,6 +17,7 @@ import { GatewayClient } from "@circle-fin/x402-batching/client";
 import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc";
 import {
   BLOCKS_PER_CHUNK,
+  PROVIDER_LABEL,
   agentAddress,
   headBlock,
   providerAddress,
@@ -319,7 +320,11 @@ export async function buildImpact(): Promise<Impact> {
       asset: "USDC",
       activeSessions: 0,
       uniqueAgents: 1,
-      uniqueProviders: Object.keys(perProvider).length,
+      // Only actual providers. perProvider also carries the Circle Gateway deposit,
+      // which this same response calls movement rather than revenue and excludes
+      // from the total, so counting it here would overstate in the one block
+      // npm run verify checks.
+      uniqueProviders: Object.keys(perProvider).filter((label) => label === PROVIDER_LABEL).length,
       secondsStreamed: 0,
     },
     perProvider,
