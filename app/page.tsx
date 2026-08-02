@@ -147,7 +147,7 @@ export default function Home() {
               </div>
               <div className="rv">
                 <span className="stat__n">0</span>
-                <span className="stat__l">Numbers stored by us. The public record is re-derived on request</span>
+                <span className="stat__l">Numbers you have to take on trust. Every figure is re-derivable from Arc or Circle</span>
               </div>
             </div>
             <p className="stats__note">

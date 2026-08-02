@@ -1,0 +1,17 @@
+{
+  "note": "Derived from Arc's USDC transfer log by scripts/build-seed.ts over finalised blocks. Regenerate with npm run seed. Re-derive independently, from genesis to the chain head and without reading this file, with npm run verify.",
+  "fromBlock": 54141800,
+  "toBlock": 54321799,
+  "windows": 20,
+  "derivedAt": "2026-08-02T17:52:00.591Z",
+  "perProvider": {
+    "provider treasury": {
+      "count": 16,
+      "total": "1515800"
+    },
+    "Circle Gateway deposit": {
+      "count": 1,
+      "total": "2000000"
+    }
+  }
+}

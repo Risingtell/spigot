@@ -177,15 +177,16 @@ const SLIDES: Slide[] = [
     kicker: "Proof",
     title: (
       <>
-        A public record that <span className="hl">stores nothing</span>
+        A public record you can <span className="hl">re-derive yourself</span>
       </>
     ),
     body: (
       <>
         <p>
-          Most projects publish a number from their own database and ask you to believe it. Spigot holds none. Every
-          figure on <span className="mono">/api/impact</span> is fetched on request from a ledger we do not control:
-          direct settlements from Arc&apos;s USDC transfer log, gas-free settlements from Circle&apos;s own Gateway API.
+          Most projects publish a number from their own database and ask you to believe it. Spigot asks you to check.
+          Gas-free settlements on <span className="mono">/api/impact</span> are fetched live from Circle&apos;s Gateway
+          API on every request. The on-chain half is derived from Arc&apos;s USDC transfer log over finalised blocks by
+          a committed script, because that range cannot change, and it is regenerated with one command.
         </p>
         <div className="codeblock">
           {`git clone https://github.com/Risingtell/spigot

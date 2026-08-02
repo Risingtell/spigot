@@ -14,6 +14,7 @@
  */
 
 import { GatewayClient } from "@circle-fin/x402-batching/client";
+import seed from "./seed.json" with { type: "json" };
 import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc";
 import {
   BLOCKS_PER_CHUNK,
@@ -159,38 +160,55 @@ async function fromArc(
    */
   const MAX_WINDOWS = 20;
   const total = Math.min(MAX_WINDOWS, Math.ceil((head - genesis + 1) / BLOCKS_PER_CHUNK));
+  const ceiling = Math.min(head, genesis + total * BLOCKS_PER_CHUNK - 1);
+
   let read = 0;
   let budgetSpent = false;
   let lowest = head + 1;
   let highest = genesis - 1;
 
-  for (let i = 0; i < total; i++) {
-    const from = genesis + i * BLOCKS_PER_CHUNK;
-    const to = Math.min(head, from + BLOCKS_PER_CHUNK - 1);
-    const key = `${from}-${to}`;
+  /**
+   * The window this feed reads is finalised, so its answer cannot change, and
+   * re-deriving it on every cold instance costs seventeen seconds of Arc's
+   * throttled RPC to learn something nobody could have altered. `npm run seed`
+   * derives it once and checks the result in, and it is used here when it covers
+   * exactly the same blocks. When it does not, the scan runs as before, so the
+   * feed is never dependent on the file being present or current.
+   */
+  const seeded = seed.fromBlock === genesis && seed.toBlock === ceiling;
+  if (seeded) {
+    absorb(seed.perProvider as Impact["perProvider"]);
+    read = total;
+    lowest = seed.fromBlock;
+    highest = seed.toBlock;
+  } else {
+    for (let i = 0; i < total; i++) {
+      const from = genesis + i * BLOCKS_PER_CHUNK;
+      const to = Math.min(head, from + BLOCKS_PER_CHUNK - 1);
+      const key = `${from}-${to}`;
 
-    const cached = windowCache.get(key);
-    if (cached) {
-      absorb(cached);
+      const cached = windowCache.get(key);
+      if (cached) {
+        absorb(cached);
+        read += 1;
+        lowest = Math.min(lowest, from);
+        highest = Math.max(highest, to);
+        continue;
+      }
+
+      if (Date.now() - started > SCAN_BUDGET_MS) {
+        budgetSpent = true;
+        break;
+      }
+
+      const scan = await scanSettlements({ fromBlock: from, toBlock: to });
+      if (scan.missed.length) continue; // read it next time rather than cache a hole
+      absorb(scan.totals.perProvider);
+      if (to < head) windowCache.set(key, scan.totals.perProvider);
       read += 1;
       lowest = Math.min(lowest, from);
       highest = Math.max(highest, to);
-      continue;
     }
-
-    if (Date.now() - started > SCAN_BUDGET_MS) {
-      budgetSpent = true;
-      break;
-    }
-
-    const scan = await scanSettlements({ fromBlock: from, toBlock: to });
-    if (scan.missed.length) continue; // read it next time rather than cache a hole
-    absorb(scan.totals.perProvider);
-    // A window ending at the head may still take more logs, so it is not final yet.
-    if (to < head) windowCache.set(key, scan.totals.perProvider);
-    read += 1;
-    lowest = Math.min(lowest, from);
-    highest = Math.max(highest, to);
   }
 
   const paid = settlementsToProvider(merged);
@@ -206,7 +224,11 @@ async function fromArc(
       note:
         `Transfers that reached the provider, re-derived from Arc's own logs. ` +
         (complete
-          ? `Blocks ${lowest} to ${highest} were read in full, which is the window the direct rail settled in. ` +
+          ? `Blocks ${lowest} to ${highest}, the window the direct rail settled in, ` +
+            (seeded
+              ? `derived from Arc's transfer log by scripts/build-seed.ts over finalised blocks and checked in, ` +
+                `because that range cannot change. Regenerate it with npm run seed. `
+              : `read in full on this request. `) +
             `Arc caps a log query at 10,000 blocks and produces about 130,000 a day, so a request-time scan has to be ` +
             `bounded; npm run verify reads the whole chain to block ${head} with no bound at all.`
           : `${read} of ${total} windows from block ${genesis} were read, so this is a floor and not the total. ` +

@@ -14,7 +14,7 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | Chain | Arc Testnet (5042002), USDC as the gas token |
 | Settled on the direct rail | **19 settlements, $1.6985 USDC**, every one a `Transfer` in Arc's token ledger |
 | Settled gas free | **4 settlements, $0.3997 USDC** through Circle Nanopayments, signed off-chain and batched by Circle |
-| Both rails together | **23 settlements, $2.0981 USDC** at the time of writing, and climbing every time somebody runs the hosted console live |
+| Both rails together | **41 settlements, $3.4204 USDC** at the time of writing, and climbing every time somebody runs the hosted console live |
 | Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
@@ -250,10 +250,16 @@ build is the buyer-side policy, not custody. Beyond that:
   genuinely holds across instances is the agent's own on-chain balance, which is
   why live settlement simply stops being offered below a reserve. Said plainly in
   [`app/api/run/route.ts`](./app/api/run/route.ts) rather than dressed up.
-- **The public record reads a bounded window.** Arc caps a log query at 10,000
-  blocks and produces about 130,000 a day, so no request-time scan can cover the
-  chain. The feed scans a fixed window anchored at the first settlement and names
-  the blocks it covered; `npm run verify` is the one that scans to the head.
+- **The public record reads a bounded window, and pre-derives part of it.** Arc
+  caps a log query at 10,000 blocks and produces about 130,000 a day, so no
+  request-time scan can cover the chain. The feed covers a fixed window anchored at
+  the first settlement and names the blocks it covered. That window is finalised,
+  so it is derived once by `npm run seed` and checked in rather than re-read on
+  every cold start, which takes a cold response from about seventeen seconds to
+  under two. The script is committed, the blocks are named in the output, and
+  `npm run verify` re-derives the same settlements from genesis to the chain head
+  without reading the seed at all. The gas-free half is never seeded: it lives in
+  Circle's API, not in a block, so it is fetched live every time.
 - **Sixteen deep transitive advisories remain open**, all inside Circle's own
   SDKs (`@solana/web3.js`, `@ethersproject/*`, `@coral-xyz/anchor`) with no fix
   published upstream. Every high-severity one is closed, by pinning `postcss` and

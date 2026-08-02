@@ -17,7 +17,8 @@
     "agent": "node --env-file-if-exists=.env.local --import tsx src/run-live.ts",
     "topup": "node --env-file-if-exists=.env.local --import tsx src/run-topup.ts",
     "wallet:new": "tsx scripts/new-wallet.ts",
-    "nano": "node --env-file-if-exists=.env.local --import tsx src/run-nano.ts"
+    "nano": "node --env-file-if-exists=.env.local --import tsx src/run-nano.ts",
+    "seed": "tsx scripts/build-seed.ts"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.14.0",
