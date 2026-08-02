@@ -160,6 +160,64 @@ export async function GET() {
           },
         },
       },
+      "/api/treasury": {
+        get: {
+          tags: ["proof"],
+          operationId: "getTreasury",
+          summary: "What the agent can spend, and on which chains",
+          description:
+            "Two numbers that mean different things. The Arc figure is what a settlement can actually come out of. " +
+            "The unified balance is everything the agent holds through Circle Gateway on any chain, read with the " +
+            "Unified Balance Kit; when Arc falls below the floor the agent draws from it without naming a source " +
+            "chain. Both are read live and nothing is stored.",
+          responses: {
+            "200": { description: "Arc balance, unified balance per chain, the top-up policy and the current decision." },
+          },
+        },
+      },
+      "/api/run": {
+        post: {
+          tags: ["agent"],
+          operationId: "runAgent",
+          summary: "Run the real agent loop on either settlement rail",
+          description:
+            "Runs the actual Spigot agent server-side and returns every settlement it made. On the direct rail each " +
+            "one is a confirmed USDC transfer on Arc with an explorer link. On the gas-free rail the agent buys from " +
+            "this same API's x402 seller through Circle Gateway, so each row carries the chunk that was delivered in " +
+            "exchange for it. Guarded by a per-instance rate limit and by the agent's own on-chain balance.",
+          requestBody: {
+            required: false,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    rail: {
+                      type: "string",
+                      enum: ["direct", "nano"],
+                      default: "direct",
+                      description: "direct settles on Arc per block; nano settles gas free through Circle Gateway.",
+                    },
+                    scenario: {
+                      type: "string",
+                      enum: ["stale", "fresh", "budget"],
+                      description:
+                        "A stated value curve. Omit on the gas-free rail to use the live BTC trade-flow signal instead.",
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description:
+                "The run. Carries mode (live, simulated or unavailable), the settlements, the closing decision and " +
+                "its reason, and on the gas-free rail the delivered chunks and the market reading the agent ruled on.",
+            },
+          },
+        },
+      },
     },
     components: {
       schemas: {
