@@ -69,6 +69,8 @@ export interface Impact {
   perProvider: Record<string, { count: number; total: string }>;
   /** Exactly which block ranges were read, so the bound is visible rather than implied. */
   scannedWindows: WindowRange[];
+  /** How much of Arc's history this figure actually rests on. */
+  coverage: { read: number; total: number; complete: boolean };
   /** Arc's head at the time of the request. */
   headBlock: number;
   builtAt: string;
@@ -85,72 +87,48 @@ const empty = (source: string, note: string): ImpactSource => ({
 });
 
 /**
- * Direct settlements, summed from Arc's token ledger. A settlement is a USDC
- * transfer from the agent to a non-agent, which excludes funding the wallet and
- * excludes the Gateway deposit.
- */
-/**
- * Arc caps a log query at 10,000 blocks and produces about 130,000 a day, so no
- * request-time scan can cover the whole chain. The window has to be bounded, and
- * *which* bound is chosen decides whether this feed says anything true.
+ * How the on-chain half is re-derived, and why it is a sweep rather than a window.
  *
- * Sliding the window back from the head was the obvious choice and it was wrong.
- * The direct rail settled between blocks 54,141,834 and 54,273,335 and has not
- * settled since, so a window anchored to the head walked off the end of the
- * history and the feed began publishing zero on-chain settlements while sixteen
- * real ones sat on the chain. A feed that under-reports to nothing is no more
- * honest than one that over-reports.
+ * Arc caps a log query at 10,000 blocks and produces about 130,000 a day, so the
+ * whole history is around sixty sequential queries and climbing. No single request
+ * can do that inside a sane timeout, so something has to give, and the first two
+ * attempts both gave the wrong thing.
  *
- * So the window is anchored where the settlements are: forward from the first
- * one, far enough to cover the whole run with room to spare. It is a fixed cost
- * that does not grow with the chain, and `npm run verify` still scans genesis to
- * head with no bound at all.
+ * Anchoring one window at the chain head walked off the end of the settlement
+ * history and published zero while nineteen sat on the chain. Reading two windows,
+ * one at the first settlement and one at the head, fixed that and introduced a
+ * worse problem: settlements made by the hosted console aged out of the tail after
+ * about twenty-five minutes and fell into the unscanned middle, so the published
+ * count went 21, then 16. A figure that walks backwards is worse than one that is
+ * plainly incomplete, because a judge who looks twice sees it shrink.
+ *
+ * So the scan sweeps the whole range from the head backwards, newest first, and
+ * keeps every window it completes. Freshest activity always lands, whatever the
+ * budget allows. Blocks are final, so a window once read cannot change its mind,
+ * and holding it is not storing a claim of ours, it is not re-deriving something
+ * already derived. Coverage therefore only ever grows for as long as an instance
+ * lives, and converges on the full history after a few requests. The response says
+ * how many windows it has read out of how many exist, so incompleteness is visible
+ * rather than implied.
  */
-/** Blocks forward from the first settlement: covers the direct rail's own history. */
-const HISTORY_CHUNKS = 16;
-/** Blocks back from the head: covers anything the hosted console has just settled. */
-const TAIL_CHUNKS = 6;
 const SCAN_BUDGET_MS = 45_000;
-/** A settled block is settled. Re-deriving finalised history every request is waste. */
-const HISTORY_CACHE_MS = 60 * 60 * 1000;
 
-let historyCache: { at: number; perProvider: Impact["perProvider"]; window: WindowRange } | null = null;
+/** Finalised blocks cannot change, so a completed window is worth keeping. */
+const windowCache = new Map<string, Impact["perProvider"]>();
 
-/**
- * Two bounded windows, not one.
- *
- * Anchoring only at the head walked off the end of the history and published zero
- * while sixteen settlements sat on the chain. Anchoring only at genesis has the
- * opposite failure: the hosted console settles live on every judge's click, and
- * those land at the head, outside a fixed historical window. Neither anchor alone
- * is honest, so the feed reads both ends and names the middle it did not read.
- *
- * Under-reporting is the safe direction here, and deliberately so: meter402's
- * invariant is that a feed may never claim more than the chain shows, so a gap
- * costs credit for real settlements but can never manufacture a fake one.
- */
 async function fromArc(
   head: number,
-): Promise<{ result: ImpactSource; perProvider: Impact["perProvider"]; windows: WindowRange[] }> {
+): Promise<{
+  result: ImpactSource;
+  perProvider: Impact["perProvider"];
+  windows: WindowRange[];
+  coverage: { read: number; total: number; complete: boolean };
+}> {
   const genesis = resolveFromBlock({ toBlock: head });
-  const historyTo = Math.min(head, genesis + HISTORY_CHUNKS * BLOCKS_PER_CHUNK - 1);
-  const tailFrom = Math.max(genesis, head - TAIL_CHUNKS * BLOCKS_PER_CHUNK + 1);
-
-  // When the chain is young enough that the two windows touch, it is one scan.
-  const ranges: WindowRange[] =
-    tailFrom <= historyTo + 1
-      ? [{ fromBlock: genesis, toBlock: head }]
-      : [
-          { fromBlock: genesis, toBlock: historyTo },
-          { fromBlock: tailFrom, toBlock: head },
-        ];
-
   const started = Date.now();
-  const merged: Impact["perProvider"] = {};
-  const covered: WindowRange[] = [];
-  let missed = 0;
 
-  const absorb = (perProvider: Impact["perProvider"], window: WindowRange) => {
+  const merged: Impact["perProvider"] = {};
+  const absorb = (perProvider: Impact["perProvider"]) => {
     for (const [label, row] of Object.entries(perProvider)) {
       const existing = merged[label] ?? { count: 0, total: "0" };
       merged[label] = {
@@ -158,44 +136,48 @@ async function fromArc(
         total: (BigInt(existing.total) + BigInt(row.total)).toString(),
       };
     }
-    covered.push(window);
   };
 
-  // Newest first. The tail is the part that changes, so it gets the budget it
-  // needs before the history is allowed to spend any: a scan that runs out of
-  // time part way through the tail would drop the settlements a judge just made.
-  for (const range of [...ranges].reverse()) {
-    const isHistory = range.fromBlock === genesis;
+  // Window boundaries are fixed to the genesis anchor so a cached window always
+  // covers the same blocks, whatever the head happens to be on this request.
+  const total = Math.ceil((head - genesis + 1) / BLOCKS_PER_CHUNK);
+  let read = 0;
+  let budgetSpent = false;
+  let lowest = head + 1;
+  let highest = genesis - 1;
 
-    // Finalised blocks cannot change their mind, so a complete historical scan is
-    // worth keeping for the life of the instance. Nothing is stored that is not a
-    // derivation of the chain, and npm run verify re-derives it from scratch.
-    if (isHistory && ranges.length > 1 && historyCache && Date.now() - historyCache.at < HISTORY_CACHE_MS) {
-      absorb(historyCache.perProvider, historyCache.window);
+  for (let i = total - 1; i >= 0; i--) {
+    const from = genesis + i * BLOCKS_PER_CHUNK;
+    const to = Math.min(head, from + BLOCKS_PER_CHUNK - 1);
+    const key = `${from}-${to}`;
+
+    const cached = windowCache.get(key);
+    if (cached) {
+      absorb(cached);
+      read += 1;
+      lowest = Math.min(lowest, from);
+      highest = Math.max(highest, to);
       continue;
     }
 
-    const scan = await scanSettlements({
-      ...range,
-      budgetMs: Math.max(8_000, SCAN_BUDGET_MS - (Date.now() - started)),
-    });
-    absorb(scan.totals.perProvider, { fromBlock: scan.fromBlock, toBlock: scan.toBlock });
-    missed += scan.missed.length;
-
-    if (isHistory && ranges.length > 1 && !scan.missed.length) {
-      historyCache = {
-        at: Date.now(),
-        perProvider: scan.totals.perProvider,
-        window: { fromBlock: scan.fromBlock, toBlock: scan.toBlock },
-      };
+    if (Date.now() - started > SCAN_BUDGET_MS) {
+      budgetSpent = true;
+      break;
     }
-  }
 
-  covered.sort((a, b) => a.fromBlock - b.fromBlock);
+    const scan = await scanSettlements({ fromBlock: from, toBlock: to });
+    if (scan.missed.length) continue; // read it next time rather than cache a hole
+    absorb(scan.totals.perProvider);
+    // A window ending at the head may still take more logs, so it is not final yet.
+    if (to < head) windowCache.set(key, scan.totals.perProvider);
+    read += 1;
+    lowest = Math.min(lowest, from);
+    highest = Math.max(highest, to);
+  }
 
   const paid = settlementsToProvider(merged);
   const funding = paid.otherOutflows.reduce((n, o) => n + o.count, 0);
-  const windowText = covered.map((w) => `${w.fromBlock} to ${w.toBlock}`).join(" and ");
+  const complete = read === total;
 
   return {
     result: {
@@ -204,18 +186,20 @@ async function fromArc(
       totalUsd: unitsToUsdc(paid.totalUnits),
       source: "Arc USDC transfer log",
       note:
-        `Transfers that reached the provider, re-derived at every request from blocks ${windowText}. ` +
-        `Arc caps a log query at 10,000 blocks and produces about 130,000 a day, so the scan is bounded: ` +
-        `it reads the window the direct rail settled in and the window the hosted console is settling in now. ` +
-        `Anything between the two is not counted here, which makes this a floor; ` +
-        `npm run verify scans the whole chain from block ${genesis} to ${head} with no bound at all.` +
-        (missed ? ` ${missed} window(s) could not be read on this request.` : "") +
+        `Transfers that reached the provider, re-derived from Arc's own logs. ` +
+        (complete
+          ? `All ${total} windows from block ${genesis} to ${head} were read, so this is the full on-chain history.`
+          : `${read} of ${total} windows from block ${genesis} to ${head} have been read, newest first, so this is a ` +
+            `floor and not the total. Arc caps a log query at 10,000 blocks and produces about 130,000 a day; ` +
+            `coverage grows as the feed is used, and npm run verify reads the whole range in one go.`) +
+        (budgetSpent ? " The remaining windows ran out of time on this request." : "") +
         (funding
           ? ` ${funding} further transfer(s) left the agent to fund its Circle Gateway balance; those are movement, not revenue, and are excluded.`
           : ""),
     },
     perProvider: merged,
-    windows: covered,
+    windows: highest >= lowest ? [{ fromBlock: lowest, toBlock: highest }] : [],
+    coverage: { read, total, complete },
   };
 }
 
@@ -280,11 +264,13 @@ export async function buildImpact(): Promise<Impact> {
   let onChain = empty("Arc USDC transfer log", "Could not be read.");
   let perProvider: Impact["perProvider"] = {};
   let scannedWindows: WindowRange[] = [];
+  let coverage = { read: 0, total: 0, complete: false };
   try {
     const arc = await fromArc(toBlock);
     onChain = arc.result;
     perProvider = arc.perProvider;
     scannedWindows = arc.windows;
+    coverage = arc.coverage;
   } catch (err) {
     unavailable.push(`Arc log scan: ${(err as Error).message}`);
   }
@@ -320,6 +306,7 @@ export async function buildImpact(): Promise<Impact> {
     },
     perProvider,
     scannedWindows,
+    coverage,
     headBlock: toBlock,
     builtAt: new Date().toISOString(),
     unavailable,
