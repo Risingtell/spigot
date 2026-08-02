@@ -31,8 +31,11 @@
  */
 
 import { UnifiedBalanceKit } from "@circle-fin/unified-balance-kit";
-import { createViemAdapterFromPrivateKey } from "@circle-fin/adapter-viem-v2";
-import { USDC_UNIT, unitsToUsdc, usdcToUnits } from "./arc";
+import { ViemAdapter, createViemAdapterFromPrivateKey } from "@circle-fin/adapter-viem-v2";
+import { createPublicClient, createWalletClient, http, type Chain, type PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { ARC_TESTNET_CHAIN_ID, USDC_UNIT, unitsToUsdc, usdcToUnits } from "./arc";
+import { pacedTransport } from "./chain";
 
 /**
  * Chains the agent can hold its reserve on. Every one of these is a Gateway v1
@@ -127,10 +130,42 @@ export function treasuryPolicy(opts: {
   };
 }
 
+/**
+ * The agent's adapter, with Arc's throttle designed around rather than hoped past.
+ *
+ * `createViemAdapterFromPrivateKey` is the zero-config factory and it builds
+ * clients on viem's plain `http()` transport. That is fine on an ordinary chain
+ * and wrong on Arc's public endpoint, which caps how many calls may be in flight
+ * rather than how many are made. The kit fans out reads while it works out
+ * balances, allowances and permit nonces, so a deposit fails on a funded wallet
+ * and a healthy endpoint with "request limit reached", and no amount of retrying
+ * helps: retries cannot fix a concurrency cap.
+ *
+ * So Arc's clients are built by hand on the same serialising transport the
+ * settlement path uses, and every other chain keeps the default.
+ */
 function adapterFor(privateKey: string) {
   if (!privateKey) throw new Error("No agent key: the agent cannot move its own funds.");
   const key = (privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as `0x${string}`;
-  return createViemAdapterFromPrivateKey({ privateKey: key });
+  const account = privateKeyToAccount(key);
+
+  const clientsFor = (chain: Chain) => {
+    const onArc = chain.id === ARC_TESTNET_CHAIN_ID;
+    return onArc ? pacedTransport() : http();
+  };
+
+  // The same capabilities the zero-config factory would have given, key-controlled
+  // across every EVM chain. Only the transport is being changed here.
+  const { capabilities } = createViemAdapterFromPrivateKey({ privateKey: key });
+  if (!capabilities) throw new Error("The viem adapter reported no capabilities to carry over.");
+
+  return new ViemAdapter(
+    {
+      getPublicClient: ({ chain }) => createPublicClient({ chain, transport: clientsFor(chain) }) as PublicClient,
+      getWalletClient: ({ chain }) => createWalletClient({ account, chain, transport: clientsFor(chain) }),
+    },
+    capabilities,
+  );
 }
 
 export interface ChainBalance {
@@ -233,11 +268,14 @@ export async function fundReserve(opts: {
   const recorder = stepRecorder(opts.onStep);
   kit.on("*", (payload) => recorder.handle(payload));
 
-  await kit.deposit({
-    from: { adapter: adapterFor(opts.privateKey), chain: opts.chain },
-    amount: opts.amountUsdc,
-    token: "USDC",
-  });
+  const deposit = () =>
+    kit.deposit({
+      from: { adapter: adapterFor(opts.privateKey), chain: opts.chain },
+      amount: opts.amountUsdc,
+      token: "USDC",
+    });
+
+  await deposit();
 
   return { amountUsdc: opts.amountUsdc, chain: opts.chain };
 }
