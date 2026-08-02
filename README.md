@@ -214,12 +214,19 @@ is the agent, the policy, the economics, and the Arc binding on top.
 
 These hold by construction, and the test suite asserts each one:
 
-- **Every settlement clears the economical floor.** The amount worth settling is
-  also the smallest block of time worth opening, so the agent only opens a block it
-  can pay for outright and always stops on a block boundary. If a stream stops
-  earning its price partway through a block, the agent stops buying at once and
-  rides out what it already committed to. There is no closing fragment, so the
-  overhead ceiling holds on the last settlement as well as the first.
+- **Every settlement clears the economical floor, with one bounded exception.** The
+  amount worth settling is also the smallest block of time worth opening, so the
+  agent only opens a block it can pay for outright and always stops on a block
+  boundary. If a stream stops earning its price partway through a block, the agent
+  stops buying at once and rides out what it already committed to.
+  The exception is a session that runs out of budget mid-block. A tick can overshoot
+  the floor, because the meter bills elapsed time and a descheduled interval lands
+  higher than intended; if that overshoot no longer fits the budget, the agent is
+  holding metered time it cannot settle at the floor. Breaching the budget is not an
+  option and leaving the provider unpaid is not an option, so the final settlement of
+  a budget-exhausted session may fall below the floor. It is bounded by what one
+  block had metered, it can only ever be the last one, and the test suite asserts
+  both of those rather than asserting the exception away.
 - **The budget cannot be breached.** A block is only opened if the whole block fits
   inside what is left. An agent whose budget cannot fund even one worthwhile
   settlement declines before consuming anything, rather than running up a debt.

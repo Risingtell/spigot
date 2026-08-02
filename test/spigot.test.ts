@@ -162,14 +162,44 @@ for (const c of [
 
     const floor = minEconomicSettlementUnits("1564", 0.05);
     assert.ok(result.settlements > 0, "the provider should have been paid");
-    for (const amount of provider.paid) {
+
+    /**
+     * Every settlement clears the floor, with one bounded exception that is real
+     * and worth stating rather than asserting away.
+     *
+     * A tick can overshoot the floor: the meter bills elapsed time, and if the
+     * process is descheduled the interval that was meant to land just above the
+     * floor lands well above it. If that overshoot no longer fits the budget, the
+     * agent is left holding metered time it cannot settle at the floor. Three
+     * things then conflict, and only one of them can give. Breaching the budget is
+     * not an option, and leaving a provider unpaid for time it delivered is not an
+     * option, so the last settlement of a budget-exhausted session may fall below
+     * the floor. It is bounded by what one block had already metered, and it can
+     * only ever be the final one.
+     */
+    const paid = provider.paid.map((a) => BigInt(a));
+    const belowFloor = paid.filter((a) => a < floor);
+
+    for (const amount of paid.slice(0, -1)) {
       assert.ok(
-        BigInt(amount) >= floor,
-        `settlement ${amount} is below the floor ${floor} (closed: ${result.closedReason})`,
+        amount >= floor,
+        `settlement ${amount} is below the floor ${floor} and is not the last (closed: ${result.closedReason})`,
       );
       // Which is the same thing as saying the chain fee stayed inside the ceiling.
-      assert.ok(overheadRatio("1564", amount) <= 0.05);
+      assert.ok(overheadRatio("1564", amount.toString()) <= 0.05);
     }
+
+    if (belowFloor.length > 0) {
+      assert.equal(belowFloor.length, 1, "at most one settlement may fall below the floor");
+      assert.equal(paid[paid.length - 1], belowFloor[0], "and it must be the last one");
+      assert.match(
+        result.closedReason,
+        /budget/,
+        "a sub-floor settlement is only ever forced by the budget running out",
+      );
+      assert.ok(belowFloor[0] > 0n, "and it still has to be worth paying");
+    }
+
     assert.equal(provider.total().toString(), result.spentUnits);
   });
 }
