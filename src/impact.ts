@@ -140,13 +140,30 @@ async function fromArc(
 
   // Window boundaries are fixed to the genesis anchor so a cached window always
   // covers the same blocks, whatever the head happens to be on this request.
-  const total = Math.ceil((head - genesis + 1) / BLOCKS_PER_CHUNK);
+  /**
+   * Forward from the first settlement, and bounded.
+   *
+   * Sweeping backwards from the head was the previous attempt and it failed for a
+   * reason worth writing down: the cache that made coverage grow lives in module
+   * state, and on a serverless runtime almost every request is a fresh instance,
+   * so coverage never accumulated. Worse, the direct rail's settlements all sit in
+   * the oldest windows, so reading newest-first found nothing at all and the feed
+   * published zero again.
+   *
+   * The settlements live in a known, finite band starting at the first one. This
+   * reads that band, forward, every time, and gets the same answer on every
+   * instance. It is bounded and it does not grow with the chain. What it does not
+   * cover is anything the hosted console settles from here on, which is why the
+   * note points at npm run verify for the complete figure.
+   */
+  const MAX_WINDOWS = 20;
+  const total = Math.min(MAX_WINDOWS, Math.ceil((head - genesis + 1) / BLOCKS_PER_CHUNK));
   let read = 0;
   let budgetSpent = false;
   let lowest = head + 1;
   let highest = genesis - 1;
 
-  for (let i = total - 1; i >= 0; i--) {
+  for (let i = 0; i < total; i++) {
     const from = genesis + i * BLOCKS_PER_CHUNK;
     const to = Math.min(head, from + BLOCKS_PER_CHUNK - 1);
     const key = `${from}-${to}`;
@@ -188,10 +205,11 @@ async function fromArc(
       note:
         `Transfers that reached the provider, re-derived from Arc's own logs. ` +
         (complete
-          ? `All ${total} windows from block ${genesis} to ${head} were read, so this is the full on-chain history.`
-          : `${read} of ${total} windows from block ${genesis} to ${head} have been read, newest first, so this is a ` +
-            `floor and not the total. Arc caps a log query at 10,000 blocks and produces about 130,000 a day; ` +
-            `coverage grows as the feed is used, and npm run verify reads the whole range in one go.`) +
+          ? `Blocks ${lowest} to ${highest} were read in full, which is the window the direct rail settled in. ` +
+            `Arc caps a log query at 10,000 blocks and produces about 130,000 a day, so a request-time scan has to be ` +
+            `bounded; npm run verify reads the whole chain to block ${head} with no bound at all.`
+          : `${read} of ${total} windows from block ${genesis} were read, so this is a floor and not the total. ` +
+            `npm run verify reads the whole chain to block ${head} in one go.`) +
         (budgetSpent ? " The remaining windows ran out of time on this request." : "") +
         (funding
           ? ` ${funding} further transfer(s) left the agent to fund its Circle Gateway balance; those are movement, not revenue, and are excluded.`
