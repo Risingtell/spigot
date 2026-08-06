@@ -204,6 +204,9 @@ export class StreamingAgent {
           if (failure) return done(`settlement failed - ${failure}`);
           accrued = 0n;
           stalled = 0;
+          // Same boundary as the normal settle path: a block just closed, so a
+          // pending stop decision takes effect now rather than opening another one.
+          if (closeReason !== null) return done(closeReason);
         }
         continue;
       }

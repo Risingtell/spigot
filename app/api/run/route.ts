@@ -62,6 +62,17 @@ let liveRunInFlight = false;
 let balanceCheckedAt = 0;
 let lastKnownUnits = 0n;
 
+/** The gas-free rail spends from the same Gateway balance on every run, so it
+ * needs the same lock and pacing the direct rail has, or nothing stops one
+ * click count from turning into several concurrent draws against it. */
+let lastNanoRunAt = 0;
+let nanoRunInFlight = false;
+
+function nanoRunPermitted(): boolean {
+  if (nanoRunInFlight) return false;
+  return Date.now() - lastNanoRunAt >= MIN_LIVE_GAP_MS;
+}
+
 /** The agent's on-chain balance, cached briefly. Cheap enough, and it is the truth. */
 async function agentUnits(provider: ArcEoaSettlementProvider): Promise<bigint> {
   if (Date.now() - balanceCheckedAt < BALANCE_TTL_MS) return lastKnownUnits;
@@ -164,7 +175,28 @@ async function runNano(origin: string, scenario: Scenario | null) {
   if (!stream) throw new Error("btc-risk-feed is not in the stream catalogue.");
   if (!LIVE_PROVIDER) return { unavailable: "this deployment has no provider address configured" };
   if (!nanoConfigured()) return { unavailable: "this deployment holds no agent key, so nothing can be signed" };
+  if (!nanoRunPermitted()) {
+    return { unavailable: "another run is already in flight on this rail, or the last one finished too recently" };
+  }
 
+  // Taken synchronously, before the first await, so a second request arriving
+  // while this one is still reading the Gateway balance sees the lock rather
+  // than racing it to spend against the same starting balance.
+  nanoRunInFlight = true;
+  lastNanoRunAt = Date.now();
+  try {
+    return await runNanoBody(origin, scenario, stream, LIVE_PROVIDER);
+  } finally {
+    nanoRunInFlight = false;
+  }
+}
+
+async function runNanoBody(
+  origin: string,
+  scenario: Scenario | null,
+  stream: NonNullable<ReturnType<typeof streamById>>,
+  payTo: string,
+) {
   const budget = BigInt(NANO_BUDGET_UNITS);
   let spent = 0n;
 
@@ -195,10 +227,10 @@ async function runNano(origin: string, scenario: Scenario | null) {
       ratePerSecond: stream.ratePerSecond,
       asset: "USDC",
       provider: stream.provider,
-      payTo: LIVE_PROVIDER,
+      payTo,
     },
   ]);
-  const meter = new StreamingMeter(store, { payTo: LIVE_PROVIDER, maxTickSeconds: 60, network: ARC_TESTNET_CAIP2 });
+  const meter = new StreamingMeter(store, { payTo, maxTickSeconds: 60, network: ARC_TESTNET_CAIP2 });
 
   // No settlement economics: gas per block is zero on this rail, so there is
   // nothing to batch around and every metered interval can settle on its own.
@@ -278,7 +310,14 @@ async function runDirect(scenario: Scenario) {
   let agentWallet = "agent-alpha-wallet";
   let heldBack: string | undefined;
 
+  // The lock is taken here, synchronously, before the first await below - not
+  // after the balance check and fee read that follow. Two requests arriving
+  // close together both read liveRunPermitted() before either awaited anything
+  // once, which let both proceed live against the same wallet at once.
+  let lockHeld = false;
   if (liveRunPermitted()) {
+    liveRunInFlight = true;
+    lockHeld = true;
     try {
       const arc = new ArcEoaSettlementProvider();
       const units = await agentUnits(arc);
@@ -297,6 +336,11 @@ async function runDirect(scenario: Scenario) {
 
   const settlingLive = !provider.mock;
   const payTo = settlingLive && LIVE_PROVIDER ? LIVE_PROVIDER : SIMULATED_PROVIDER;
+
+  // Never went live after all: release the lock now rather than holding it for
+  // a simulated run, which does not touch the wallet and is not what the lock
+  // guards against.
+  if (lockHeld && !settlingLive) liveRunInFlight = false;
 
   const store = new MemoryStore([
     {
@@ -325,10 +369,9 @@ async function runDirect(scenario: Scenario) {
   const valueSignal = (ctx: TickContext): number =>
     Number(ctx.marginalUnits) * (scenario.base - scenario.slope * ctx.tick);
 
-  if (settlingLive) {
-    liveRunInFlight = true;
-    lastLiveRunAt = Date.now();
-  }
+  // The lock itself was already taken above, before the balance and fee reads;
+  // this only stamps the pacing clock, and only for a run that actually spends.
+  if (settlingLive) lastLiveRunAt = Date.now();
 
   let result;
   try {
