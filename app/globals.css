@@ -160,12 +160,18 @@ a {
 
 /* Amber text on white is 2.1:1 and fails WCAG at any size, so on light
    backgrounds the brand colour is carried by a solid block behind black text.
-   nowrap + clone keep each phrase one unbroken block. */
+   clone gives a wrapped phrase its own tight box per line, which is what
+   actually keeps "one unbroken block" true at display-heading sizes: nowrap
+   used to force the whole phrase onto one line regardless of how wide the
+   heading's own column was, so at common laptop widths the box for a two-word
+   phrase like "by construction" ran wider than its column and spilled the
+   amber block into the content next to it. Letting it wrap is what static
+   text at a fixed width will do anyway, and each wrapped line still gets a
+   clean, correctly-sized highlight instead of one oversized one. */
 .hl {
   background: var(--amber);
   color: var(--black);
   padding: 0.02em 0.14em 0.06em;
-  white-space: nowrap;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
