@@ -11,14 +11,14 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 
 | | |
 | --- | --- |
-| Chain | Arc Testnet (5042002), USDC as the gas token |
+| Chain | **Arc mainnet** (chain id 5042), USDC as the gas token. `SPIGOT_NETWORK=testnet` switches every path to Arc Testnet (5042002) |
 | Settled on the direct rail | **19 settlements, $1.6985 USDC**, every one a `Transfer` in Arc's token ledger |
 | Settled gas free | **4 settlements, $0.3997 USDC** through Circle Nanopayments, signed off-chain and batched by Circle |
 | Both rails together | **41 settlements, $3.4204 USDC** at the time of writing, and climbing every time somebody runs the hosted console live |
 | Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
-| Tests | **28 passing**, over the rules that move money |
+| Tests | **29 passing**, over the rules that move money |
 | SDK | built on [meter402](https://www.npmjs.com/package/meter402), published on npm |
 
 Those numbers are a floor, not a boast, and they are the wrong way round on purpose:
@@ -126,7 +126,7 @@ No keys, no wallet, no chain writes:
 npm install
 npm run demo      # an agent holds a stream, batches settlement, stops itself
 npm run verify    # re-derive the fee market and any settled totals from Arc
-npm test          # 28 tests over the rules that move money
+npm test          # 29 tests over the rules that move money
 ```
 
 `npm run verify` is the one to read closely. It takes Arc's gas price live, prices
@@ -134,8 +134,11 @@ one settlement, derives the cadence, and - given an agent address - sums every U
 transfer that agent made to a provider straight from the token's `Transfer` logs.
 None of it comes from Spigot.
 
-To settle for real, the agent needs USDC on Arc. The quick way is a plain key,
-funded from [faucet.circle.com](https://faucet.circle.com):
+To settle for real, the agent needs USDC on Arc. The quick way is a plain key
+holding a few dollars of USDC on Arc mainnet (send it from an exchange or bridge
+it in; gas is that same USDC, so nothing else is needed). For a free run, set
+`SPIGOT_NETWORK=testnet` and fund the key at
+[faucet.circle.com](https://faucet.circle.com) instead:
 
 ```bash
 SPIGOT_ARC_KEY=0x...            # a key holding USDC on Arc
@@ -178,7 +181,7 @@ second instead, taken from the ticker's monotonic trade id.
 
 | Spigot flow | Arc / Circle capability |
 | --- | --- |
-| Agent and provider wallets on Arc | Circle developer-controlled wallets (`ARC-TESTNET`), or a plain Arc key |
+| Agent and provider wallets on Arc | Circle developer-controlled wallets (`ARC`), or a plain Arc key |
 | Gas-free sub-cent settlement | Circle Nanopayments over Gateway, `@circle-fin/x402-batching` |
 | Selling a metered stream to an agent | x402 402 challenge priced per block, settled by `BatchFacilitatorClient` |
 | The agent's decision input | live BTC trade flow, Coinbase exchange ticker |
@@ -188,7 +191,7 @@ second instead, taken from the ticker's monotonic trade id.
 | One USDC balance across every chain the agent holds | Circle Unified Balance Kit, Gateway v1 |
 | Choosing which chains to draw a top-up from | `spend()` auto-allocation, burn intents batch-signed over EIP-712 |
 | Mint on Arc without a signer or gas there | Circle Forwarder |
-| Per-request payment envelope under each settlement | x402 / Circle Gateway (`eip155:5042002`) |
+| Per-request payment envelope under each settlement | x402 / Circle Gateway (`eip155:5042`) |
 | Per-second streaming layer over x402 | meter402, published npm SDK |
 | Proof feed that never over-claims | meter402 impact snapshot plus on-chain verifier |
 
@@ -242,8 +245,9 @@ These hold by construction, and the test suite asserts each one:
 
 ## What is honestly not production-grade yet
 
-Testnet only, and deliberately so: Arc mainnet is not open and the point of the
-build is the buyer-side policy, not custody. Beyond that:
+Custody is a raw key in an environment variable. That is the honest shape of a
+build whose point is the buyer-side policy, and it is why the hosted console
+keeps only a few dollars in the agent wallet. Beyond that:
 
 - **The hosted console's spend guards are per instance.** A rate limit and an
   in-flight lock held in module state reset on a cold start, so the only cap that
@@ -279,7 +283,7 @@ build is the buyer-side policy, not custody. Beyond that:
 
 TypeScript, [meter402](https://www.npmjs.com/package/meter402),
 `@circle-fin/developer-controlled-wallets`, `@circle-fin/unified-balance-kit`,
-`@circle-fin/adapter-viem-v2`, Next.js, Arc Testnet, USDC.
+`@circle-fin/adapter-viem-v2`, `@circle-fin/x402-batching`, Next.js, Arc mainnet, USDC.
 
 ## License
 

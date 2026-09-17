@@ -15,13 +15,13 @@
  * `minEconomicSettlementUnits` computes.
  */
 
-import { ARC_TESTNET_RPC, USDC_UNIT, weiToUnits } from "./arc";
+import { ARC, USDC_UNIT, weiToUnits } from "./arc";
 
 /** Gas burned by one ERC-20 USDC transfer on Arc. Measured, then rounded up. */
 export const SETTLEMENT_GAS_LIMIT = 65_000n;
 
 /**
- * Arc's documented testnet base-fee floor, used only when the RPC cannot be
+ * Arc's documented base-fee floor (20 gwei, measured on both networks), used only when the RPC cannot be
  * reached. Quoting the floor understates the real cost, so anything derived from
  * it is labelled `fallback` and never presented as a live measurement.
  */
@@ -90,7 +90,7 @@ export async function fetchSettlementCost(opts: {
 } = {}): Promise<SettlementCost> {
   const gasLimit = opts.gasLimit ?? SETTLEMENT_GAS_LIMIT;
   try {
-    const hex = await rpc(opts.rpcUrl ?? ARC_TESTNET_RPC, "eth_gasPrice", [], opts.timeoutMs ?? 6000);
+    const hex = await rpc(opts.rpcUrl ?? ARC.rpc, "eth_gasPrice", [], opts.timeoutMs ?? 6000);
     return settlementCostFrom(BigInt(hex), gasLimit, "live");
   } catch {
     return settlementCostFrom(ARC_BASE_FEE_FLOOR_GWEI * 1_000_000_000n, gasLimit, "fallback");

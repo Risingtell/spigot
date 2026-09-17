@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ARC_TESTNET_RPC, unitsToUsdc } from "@/src/arc";
+import { ARC, unitsToUsdc } from "@/src/arc";
 import { economicSettlementSeconds, fetchSettlementCost, minEconomicSettlementUnits } from "@/src/arc-gas";
 
 export const runtime = "nodejs";
@@ -26,7 +26,9 @@ export async function GET() {
   const minSettle = minEconomicSettlementUnits(cost.costUnits, MAX_OVERHEAD_RATIO);
 
   return NextResponse.json({
-    rpc: ARC_TESTNET_RPC,
+    network: ARC.name,
+    chainId: ARC.chainId,
+    rpc: ARC.rpc,
     gasPriceGwei: cost.gasPriceGwei,
     gasLimit: cost.gasLimit,
     source: cost.source,

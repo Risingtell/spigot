@@ -26,6 +26,8 @@ interface Decision {
   feeSharePct: number;
 }
 interface Fee {
+  /** Which Arc network the deployment settles on, as the server reports it. */
+  network?: string;
   gasPriceGwei: number;
   source: "live" | "fallback";
   settlementCostUsd: number;
@@ -280,7 +282,7 @@ export function Console() {
           {rail === "nano"
             ? "Signed off-chain and settled by Circle Gateway. No gas was paid on any block below."
             : mode === "live"
-              ? "Settling real USDC on Arc Testnet."
+              ? `Settling real USDC on ${fee?.network ?? "Arc"}.`
               : "Settling against a simulated provider on this run."}
         </p>
       )}
@@ -407,7 +409,7 @@ export function Console() {
           {rail === "nano"
             ? "Each row above is a block the agent paid for off-chain and received the next chunk of the feed in return, so the payment is the gate."
             : mode === "live"
-              ? "Every settlement above is a confirmed USDC transfer on Arc Testnet. Follow any hash to the explorer, or re-derive the whole set with npm run verify."
+              ? `Every settlement above is a confirmed USDC transfer on ${fee?.network ?? "Arc"}. Follow any hash to the explorer, or re-derive the whole set with npm run verify.`
               : "The loop, the fee market and the cadence are identical to the live path in src/run-live.ts, which moves real USDC on Arc."}
         </p>
       )}

@@ -1,6 +1,6 @@
 # Security
 
-Spigot moves real USDC, on testnet today and on the same code paths that would
+Spigot moves real USDC on Arc mainnet, on the same code paths that would
 move it anywhere else. Security reports are welcome and will be answered.
 
 ## Reporting

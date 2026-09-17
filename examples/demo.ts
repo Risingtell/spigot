@@ -18,7 +18,7 @@
 
 import { MemoryStore, MockSettlementProvider, StreamingMeter } from "meter402";
 import { StreamingAgent, type TickContext } from "../src/agent";
-import { ARC_TESTNET_CAIP2, unitsToUsdc } from "../src/arc";
+import { ARC, unitsToUsdc } from "../src/arc";
 import { economicSettlementSeconds, fetchSettlementCost, minEconomicSettlementUnits } from "../src/arc-gas";
 
 const RATE_PER_SECOND = "50000"; // $0.05/sec of held inference capacity
@@ -42,7 +42,7 @@ const store = new MemoryStore([
 const meter = new StreamingMeter(store, {
   payTo: PROVIDER,
   maxTickSeconds: 60,
-  network: ARC_TESTNET_CAIP2,
+  network: ARC.caip2,
 });
 
 // What one settlement costs on Arc right now, straight from the fee market.

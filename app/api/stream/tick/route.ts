@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { BatchFacilitatorClient } from "@circle-fin/x402-batching/server";
-import { ARC_TESTNET_CAIP2, ARC_TESTNET_USDC, unitsToUsdc } from "@/src/arc";
-import { GATEWAY_TESTNET_API } from "@/src/nano";
+import { ARC, unitsToUsdc } from "@/src/arc";
+import { GATEWAY_API } from "@/src/nano";
 import { chunkFor } from "@/src/streams";
 
 export const runtime = "nodejs";
@@ -21,20 +21,20 @@ export const dynamic = "force-dynamic";
  * express a stream whose blocks vary with how long they ran.
  */
 
-const GATEWAY_WALLET_ARC_TESTNET = "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
 /** Gateway allows a long window; a block of stream time is not worth days. */
 const MAX_TIMEOUT_SECONDS = 3600;
 /** Refuse to price a single block above this, in USDC smallest units. */
 const MAX_BLOCK_UNITS = 1_000_000n; // $1.00
 
-// The SDK points at mainnet unless told otherwise, whatever chain is configured.
-const facilitator = new BatchFacilitatorClient({ url: GATEWAY_TESTNET_API });
+// The SDK points at mainnet unless told otherwise, whatever chain is configured,
+// so the facilitator follows `ARC` explicitly.
+const facilitator = new BatchFacilitatorClient({ url: GATEWAY_API });
 
 function requirementsFor(units: bigint, sellerAddress: string, resource: string) {
   return {
     scheme: "exact" as const,
-    network: ARC_TESTNET_CAIP2,
-    asset: ARC_TESTNET_USDC,
+    network: ARC.caip2,
+    asset: ARC.usdc,
     amount: units.toString(),
     payTo: sellerAddress,
     maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
@@ -43,7 +43,7 @@ function requirementsFor(units: bigint, sellerAddress: string, resource: string)
     extra: {
       name: "GatewayWalletBatched",
       version: "1",
-      verifyingContract: GATEWAY_WALLET_ARC_TESTNET,
+      verifyingContract: ARC.gatewayWallet,
     },
   };
 }
@@ -149,7 +149,7 @@ export async function GET(req: Request) {
       chunk: chunkBody,
       paidUnits: units.toString(),
       settlement: settled.transaction ?? null,
-      network: ARC_TESTNET_CAIP2,
+      network: ARC.caip2,
     },
     {
       headers: settled.transaction

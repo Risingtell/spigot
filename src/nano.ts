@@ -21,18 +21,18 @@
 
 import { GatewayClient } from "@circle-fin/x402-batching/client";
 import type { SettlementProvider, SettlementResult, TickQuote } from "meter402";
-import { ARC_TESTNET_CAIP2, ARC_TESTNET_RPC, arcTxUrl, unitsToUsdc } from "./arc";
+import { ARC, arcTxUrl, unitsToUsdc } from "./arc";
 import { withRetry } from "./retry";
 
-/** Circle's Gateway chain key for Arc Testnet. Domain 26, chain id 5042002. */
-export const GATEWAY_CHAIN = "arcTestnet" as const;
+/** Circle's Gateway chain key for the network Spigot is running on. Domain 26. */
+export const GATEWAY_CHAIN = ARC.gatewayChain;
 
 /**
- * The testnet facilitator. The SDK defaults to the mainnet endpoint even when the
- * configured chain is a testnet, so this has to be passed explicitly on both the
- * buyer and the seller side.
+ * The Gateway facilitator for that network. The SDK defaults to the mainnet
+ * endpoint whatever chain it is given, so this is passed explicitly on both the
+ * buyer and the seller side rather than trusted to follow the chain.
  */
-export const GATEWAY_TESTNET_API = "https://gateway-api-testnet.circle.com";
+export const GATEWAY_API = ARC.gatewayApi;
 
 /** Keep at least this much in the Gateway balance, in whole USDC. */
 const MIN_GATEWAY_BALANCE = 0.5;
@@ -66,7 +66,7 @@ export interface DeliveredChunk {
 }
 
 export class NanoSettlementProvider implements SettlementProvider {
-  readonly network = ARC_TESTNET_CAIP2;
+  readonly network = ARC.caip2;
   readonly mock = false;
   readonly address: string;
 
@@ -90,7 +90,7 @@ export class NanoSettlementProvider implements SettlementProvider {
     this.gateway = new GatewayClient({
       chain: GATEWAY_CHAIN,
       privateKey,
-      rpcUrl: opts.rpcUrl ?? ARC_TESTNET_RPC,
+      rpcUrl: opts.rpcUrl ?? ARC.rpc,
     });
     this.address = this.gateway.account.address;
     this.sellerBaseUrl = opts.sellerBaseUrl.replace(/\/$/, "");
@@ -131,7 +131,7 @@ export class NanoSettlementProvider implements SettlementProvider {
     if (unitsToUsdc(wallet.toString()) < GATEWAY_TARGET) {
       throw new Error(
         `Need at least ${GATEWAY_TARGET} USDC in ${this.address} to fund Gateway. ` +
-          `Top it up at https://faucet.circle.com (Arc Testnet).`,
+          (ARC.faucet ? `Top it up at ${ARC.faucet} (${ARC.name}).` : `Send USDC on ${ARC.name} to that address.`),
       );
     }
 

@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MemoryStore, StreamingMeter, type SettlementProvider, type TickQuote } from "meter402";
 import { StreamingAgent, type TickContext } from "../src/agent";
-import { USDC_UNIT, unitsToUsdc, usdcToUnits, weiToUnits } from "../src/arc";
+import { ARC_MAINNET, ARC_TESTNET, USDC_UNIT, selectNetwork, unitsToUsdc, usdcToUnits, weiToUnits } from "../src/arc";
 import { minEconomicSettlementUnits, overheadRatio, settlementCostFrom } from "../src/arc-gas";
 import {
   ACTIVE_MARKET_TRADES_PER_SECOND,
@@ -61,6 +61,22 @@ function harness(opts: { ratePerSecond: string; maxTickSeconds?: number }) {
 // ---------------------------------------------------------------------------
 // Units
 // ---------------------------------------------------------------------------
+
+test("the network switch defaults to Arc mainnet and only accepts the two names", () => {
+  assert.equal(selectNetwork(undefined), ARC_MAINNET);
+  assert.equal(selectNetwork(""), ARC_MAINNET);
+  assert.equal(selectNetwork("mainnet"), ARC_MAINNET);
+  assert.equal(selectNetwork(" Testnet "), ARC_TESTNET);
+  assert.throws(() => selectNetwork("devnet"), /SPIGOT_NETWORK/);
+
+  // Chain ids and Gateway contracts differ, the USDC address does not.
+  assert.equal(ARC_MAINNET.chainId, 5042);
+  assert.equal(ARC_TESTNET.chainId, 5042002);
+  assert.equal(ARC_MAINNET.caip2, `eip155:${ARC_MAINNET.chainId}`);
+  assert.notEqual(ARC_MAINNET.gatewayWallet, ARC_TESTNET.gatewayWallet);
+  assert.equal(ARC_MAINNET.usdc, ARC_TESTNET.usdc);
+  assert.equal(ARC_MAINNET.faucet, undefined);
+});
 
 test("native wei converts into USDC billing units and rounds up", () => {
   // Arc's native view is 18 decimals, the ERC-20 billing view is 6.

@@ -45,8 +45,8 @@ npm run verify
 
 This is the load-bearing command. It needs no keys and no configuration. It:
 
-1. calls `eth_chainId`, `eth_blockNumber` and `eth_gasPrice` against
-   `https://rpc.testnet.arc.network`;
+1. calls `eth_chainId`, `eth_blockNumber` and `eth_gasPrice` against Arc
+   mainnet's public RPC, `https://rpc.mainnet.arc.io`;
 2. prices one USDC transfer at that gas price and derives the settlement cadence;
 3. sums every USDC transfer Spigot's agent made to its provider, straight from the
    token's `Transfer` logs, over the full history from the first settlement to the
@@ -59,8 +59,8 @@ cannot be read it says so and calls the total a floor instead of quietly reporti
 a short count.
 
 Every number it prints comes from Arc. Nothing is read from a Spigot server or
-database. Cross-check the gas price against
-[testnet.arcscan.app](https://testnet.arcscan.app) if you want a second source.
+database. Cross-check any hash or the agent's balance on
+[explorer.arc.io](https://explorer.arc.io) if you want a second source.
 
 Expected shape of the output. The gas price moves; the settlement count and total
 should match exactly:
@@ -101,7 +101,7 @@ than it settled.
 npm test
 ```
 
-28 tests over the rules that move money: unit conversion between Arc's 18-decimal
+29 tests over the rules that move money: the mainnet/testnet switch, unit conversion between Arc's 18-decimal
 gas view and the 6-decimal billing view, the economical settlement floor, the
 budget invariant, the guarantee that a provider is never left holding unpaid
 delivered time, the refusal to retry a settlement that may still be in flight, the

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ARC_TESTNET_CAIP2, ARC_TESTNET_USDC, unitsToUsdc } from "@/src/arc";
+import { ARC, unitsToUsdc } from "@/src/arc";
 import { STREAMS } from "@/src/streams";
 
 export const runtime = "nodejs";
@@ -53,8 +53,8 @@ export async function GET() {
       protocol: "x402",
       x402Version: 2,
       scheme: "exact",
-      network: ARC_TESTNET_CAIP2,
-      asset: ARC_TESTNET_USDC,
+      network: ARC.caip2,
+      asset: ARC.usdc,
       assetDecimals: 6,
       facilitator: "Circle Gateway (batched)",
       batching: {
@@ -228,7 +228,7 @@ export async function GET() {
             stream: { type: "string", enum: streamIds },
             paidUnits: { type: "string", description: "Units settled for this block." },
             settlement: { type: ["string", "null"], description: "Facilitator settlement id." },
-            network: { type: "string", example: ARC_TESTNET_CAIP2 },
+            network: { type: "string", example: ARC.caip2 },
             chunk: {
               type: "object",
               description: "The delivered content. Shape depends on the stream.",
@@ -266,8 +266,8 @@ export async function GET() {
                 type: "object",
                 properties: {
                   scheme: { type: "string", example: "exact" },
-                  network: { type: "string", example: ARC_TESTNET_CAIP2 },
-                  asset: { type: "string", example: ARC_TESTNET_USDC },
+                  network: { type: "string", example: ARC.caip2 },
+                  asset: { type: "string", example: ARC.usdc },
                   amount: { type: "string", description: "USDC smallest units owed." },
                   payTo: { type: "string" },
                   maxTimeoutSeconds: { type: "integer" },

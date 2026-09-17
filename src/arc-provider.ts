@@ -11,11 +11,11 @@
  */
 
 import type { SettlementProvider, TickQuote, SettlementResult } from "meter402";
-import { ARC_TESTNET_CAIP2 } from "./arc";
+import { ARC } from "./arc";
 import { payAndConfirm } from "./circle-wallet";
 
 export class ArcSettlementProvider implements SettlementProvider {
-  readonly network = ARC_TESTNET_CAIP2;
+  readonly network = ARC.caip2;
   readonly mock = false;
 
   /**

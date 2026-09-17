@@ -22,7 +22,7 @@
  */
 
 import { type ImpactSnapshot } from "meter402";
-import { ARC_TESTNET_USDC, USDC_UNIT, unitsToUsdc } from "./arc";
+import { ARC, USDC_UNIT, unitsToUsdc } from "./arc";
 import { GENESIS_BLOCK, agentAddress, headBlock, hexCall, rpcUrl, scanSettlements, settlementsToProvider } from "./chain";
 import {
   economicSettlementSeconds,
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
 
   console.log("Fee market");
   console.log(`  rpc:               ${rpcUrl}`);
-  console.log(`  chain id:          ${chainId}${chainId === 5042002 ? " (Arc Testnet)" : ""}`);
+  console.log(`  chain id:          ${chainId}${chainId === ARC.chainId ? ` (${ARC.name})` : " (NOT the configured Arc network)"}`);
   console.log(`  block height:      ${head}`);
   console.log(`  gas price:         ${cost.gasPriceGwei.toFixed(4)} gwei  (${cost.source})`);
   console.log(`  one settlement:    ${usd(cost.costUnits)} at ${cost.gasLimit} gas`);
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
 
   console.log("Settlements");
   console.log(`  agent:             ${agentAddress}`);
-  console.log(`  token:             ${ARC_TESTNET_USDC} (USDC on Arc)`);
+  console.log(`  token:             ${ARC.usdc} (USDC on Arc)`);
   console.log(`  blocks to scan:    ${fromBlock} to ${head}`);
 
   /**

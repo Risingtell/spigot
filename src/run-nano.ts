@@ -26,7 +26,7 @@ import { StreamingAgent, type TickContext } from "./agent";
 import { NanoSettlementProvider, nanoConfigured } from "./nano";
 import { ACTIVE_MARKET_TRADES_PER_SECOND, MarketWindow, blockValueUnits, fetchTicker } from "./market";
 import { streamById } from "./streams";
-import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc";
+import { ARC, unitsToUsdc } from "./arc";
 import { startRpcProxy } from "./rpc-proxy";
 
 const SELLER = process.env.SPIGOT_SELLER_URL ?? "http://localhost:3000";
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     },
   });
 
-  console.log("Spigot on Circle Nanopayments, Arc Testnet\n");
+  console.log(`Spigot on Circle Nanopayments, ${ARC.name}\n`);
   console.log(`  agent   : ${settlement.address}`);
   console.log(`  provider: ${providerAddress}`);
   console.log(`  seller  : ${SELLER}\n`);
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   const meter = new StreamingMeter(store, {
     payTo: providerAddress,
     maxTickSeconds: 60,
-    network: ARC_TESTNET_CAIP2,
+    network: ARC.caip2,
   });
 
   // No settlement economics: gas per block is zero on this rail, so there is

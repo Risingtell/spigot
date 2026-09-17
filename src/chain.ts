@@ -9,22 +9,34 @@
 
 import { custom } from "viem";
 import { createEvmVerifier, type OnChainTotals, type VerifierAdapter } from "meter402";
-import { ARC_TESTNET_CAIP2, ARC_TESTNET_RPC, ARC_TESTNET_USDC } from "./arc";
+import { ARC } from "./arc";
 
 /**
- * Spigot's own agent and provider on Arc, so the verifier and the feed both prove
- * something real with nothing configured. Public addresses; override with
- * SPIGOT_AGENT_ADDRESS / SPIGOT_PROVIDER_ADDRESS.
+ * Spigot's own agent and provider on each Arc network, and the block their first
+ * live settlement landed in, so the verifier and the feed both prove something
+ * real with nothing configured. Anchoring at that block rather than sliding back
+ * from the head keeps the window from drifting past the history it is meant to
+ * prove. Public addresses; override with SPIGOT_AGENT_ADDRESS /
+ * SPIGOT_PROVIDER_ADDRESS / SPIGOT_FROM_BLOCK.
  */
-export const SPIGOT_AGENT = "0x201EE872d4b1a3c06589032F682004a09ddB6aBA";
-export const SPIGOT_PROVIDER = "0x9379Ec21C3c199C83145dcD377955E8E04BBC200";
+const PROOF_ANCHORS = {
+  mainnet: {
+    agent: "0xCCAC4D9416280d6c1492dCC0D4c4e501b99fA8bC",
+    provider: "0xEb115F0E1a2b10651051f10BBF33845242e3D633",
+    genesisBlock: 21_315_000,
+  },
+  testnet: {
+    agent: "0x201EE872d4b1a3c06589032F682004a09ddB6aBA",
+    provider: "0x9379Ec21C3c199C83145dcD377955E8E04BBC200",
+    genesisBlock: 54_141_800,
+  },
+} as const;
 
-/**
- * The block Spigot's first live settlement landed in. Anchoring here rather than
- * sliding back from the head keeps the window from drifting past the history it
- * is meant to prove.
- */
-export const GENESIS_BLOCK = 54_141_800;
+const anchor = PROOF_ANCHORS[ARC.type];
+
+export const SPIGOT_AGENT: string = anchor.agent;
+export const SPIGOT_PROVIDER: string = anchor.provider;
+export const GENESIS_BLOCK: number = anchor.genesisBlock;
 
 /**
  * Arc rejects any eth_getLogs range wider than 10,000 blocks outright, with
@@ -42,7 +54,7 @@ const PACE_MS = 120;
  */
 export const BLOCKS_PER_CHUNK = CHUNK_SIZE;
 
-export const rpcUrl = process.env.SPIGOT_RPC_URL ?? ARC_TESTNET_RPC;
+export const rpcUrl = process.env.SPIGOT_RPC_URL ?? ARC.rpc;
 export const agentAddress = process.env.SPIGOT_AGENT_ADDRESS ?? SPIGOT_AGENT;
 export const providerAddress = process.env.SPIGOT_PROVIDER_ADDRESS ?? SPIGOT_PROVIDER;
 
@@ -133,12 +145,12 @@ export function pacedTransport() {
 export const PROVIDER_LABEL = "provider treasury";
 
 /**
- * Circle's Gateway wallet on Arc Testnet. The agent's deposit into Gateway lands
+ * Circle's Gateway wallet on this network. The agent's deposit into Gateway lands
  * here and is the one outflow that is emphatically not revenue, so name it: an
  * excluded line reading "Circle Gateway deposit" says what happened, where
- * "provider 0x0077777d..." leaves a reader to work it out.
+ * "provider 0x77777777..." leaves a reader to work it out.
  */
-export const GATEWAY_WALLET = "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
+export const GATEWAY_WALLET = ARC.gatewayWallet;
 
 /**
  * Settlements are transfers that reached the provider, and nothing else.
@@ -178,8 +190,8 @@ export function arcVerifier(opts: {
   maxChunks?: number;
 }): VerifierAdapter {
   return createEvmVerifier({
-    network: ARC_TESTNET_CAIP2,
-    token: ARC_TESTNET_USDC,
+    network: ARC.caip2,
+    token: ARC.usdc,
     agents: opts.agents ?? [agentAddress],
     providerNames: {
       [providerAddress.toLowerCase()]: PROVIDER_LABEL,
@@ -278,7 +290,7 @@ export async function scanSettlements(opts: {
   }
 
   return {
-    totals: { network: ARC_TESTNET_CAIP2, settlements, totalPaid: totalPaid.toString(), perProvider },
+    totals: { network: ARC.caip2, settlements, totalPaid: totalPaid.toString(), perProvider },
     fromBlock: opts.fromBlock,
     toBlock: Math.max(covered, opts.fromBlock),
     missed,

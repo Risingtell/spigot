@@ -34,14 +34,22 @@ import { UnifiedBalanceKit } from "@circle-fin/unified-balance-kit";
 import { ViemAdapter, createViemAdapterFromPrivateKey } from "@circle-fin/adapter-viem-v2";
 import { createPublicClient, createWalletClient, http, type Chain, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { ARC_TESTNET_CHAIN_ID, USDC_UNIT, unitsToUsdc, usdcToUnits } from "./arc";
+import { ARC, USDC_UNIT, unitsToUsdc, usdcToUnits } from "./arc";
 import { pacedTransport } from "./chain";
 
 /**
  * Chains the agent can hold its reserve on. Every one of these is a Gateway v1
- * chain, which is what makes them addable to a single balance.
+ * chain, which is what makes them addable to a single balance. The first group
+ * is mainnet, the second is what the same kit calls them on testnet.
  */
 export type ReserveChain =
+  | "Ethereum"
+  | "Base"
+  | "Avalanche"
+  | "Arbitrum"
+  | "Optimism"
+  | "Polygon"
+  | "Unichain"
   | "Ethereum_Sepolia"
   | "Base_Sepolia"
   | "Avalanche_Fuji"
@@ -50,8 +58,11 @@ export type ReserveChain =
   | "Polygon_Amoy_Testnet"
   | "Unichain_Sepolia";
 
+/** The reserve chain to assume when none is configured, per network. */
+export const DEFAULT_RESERVE_CHAIN: ReserveChain = ARC.type === "mainnet" ? "Base" : "Base_Sepolia";
+
 /** Where settlement happens, and so where a top-up has to land. */
-export const SPEND_CHAIN = "Arc_Testnet" as const;
+export const SPEND_CHAIN = ARC.ubkChain;
 
 /**
  * Any Gateway chain the agent can deposit from, Arc included.
@@ -150,7 +161,7 @@ function adapterFor(privateKey: string) {
   const account = privateKeyToAccount(key);
 
   const clientsFor = (chain: Chain) => {
-    const onArc = chain.id === ARC_TESTNET_CHAIN_ID;
+    const onArc = chain.id === ARC.chainId;
     return onArc ? pacedTransport() : http();
   };
 
@@ -194,9 +205,10 @@ export async function unifiedBalance(privateKey: string): Promise<UnifiedBalance
   const result = await kit.getBalances({
     sources: { adapter: adapterFor(privateKey) },
     token: "USDC",
-    // Without this the kit queries mainnet and every chain reads zero, which is
-    // true and useless. Arc is testnet-only for now, so the whole agent is.
-    networkType: "testnet",
+    // The kit reads one network family at a time. Asking it for the wrong one
+    // makes every chain read zero, which is true and useless, so it follows
+    // whichever network the rest of the agent is on.
+    networkType: ARC.type,
   });
 
   const perChain: ChainBalance[] = [];

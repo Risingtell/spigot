@@ -3,7 +3,7 @@
  *
  * The Circle-wallet path (`src/arc-provider.ts`) is the one an operator with an
  * organisation and a wallet set will want. This is the other one: an agent holding
- * nothing but a private key and some USDC from the faucet. It exists because the
+ * nothing but a private key and some USDC. It exists because the
  * shortest path from "clone the repo" to "watch real money move on Arc" should not
  * run through an account signup.
  *
@@ -17,27 +17,20 @@ import { createPublicClient, createWalletClient, defineChain, type Hex } from "v
 import { privateKeyToAccount } from "viem/accounts";
 import type { SettlementProvider, SettlementResult, TickQuote } from "meter402";
 import { pacedTransport } from "./chain";
-import {
-  ARC_EXPLORER,
-  ARC_TESTNET_CAIP2,
-  ARC_TESTNET_CHAIN_ID,
-  ARC_TESTNET_RPC,
-  ARC_TESTNET_USDC,
-  arcTxUrl,
-} from "./arc";
+import { ARC, arcTxUrl } from "./arc";
 
 /**
- * Arc Testnet for viem. The native currency is USDC at 18 decimals, which is the
- * gas-side view of the same balance the ERC-20 reports at 6. One pool of funds,
- * two views: never add them together.
+ * Arc for viem, whichever network `ARC` resolved to. The native currency is USDC
+ * at 18 decimals, which is the gas-side view of the same balance the ERC-20
+ * reports at 6. One pool of funds, two views: never add them together.
  */
-export const arcTestnet = defineChain({
-  id: ARC_TESTNET_CHAIN_ID,
-  name: "Arc Testnet",
+export const arcChain = defineChain({
+  id: ARC.chainId,
+  name: ARC.name,
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: { default: { http: [ARC_TESTNET_RPC] } },
-  blockExplorers: { default: { name: "Arcscan", url: ARC_EXPLORER } },
-  testnet: true,
+  rpcUrls: { default: { http: [ARC.rpc] } },
+  blockExplorers: { default: { name: "Arc Explorer", url: ARC.explorer } },
+  testnet: ARC.type === "testnet",
 });
 
 const ERC20_TRANSFER = [
@@ -81,7 +74,7 @@ export interface ArcEoaOptions {
  * agent's own key and confirmed before the meter records it.
  */
 export class ArcEoaSettlementProvider implements SettlementProvider {
-  readonly network = ARC_TESTNET_CAIP2;
+  readonly network = ARC.caip2;
   readonly mock = false;
   readonly address: string;
 
@@ -97,14 +90,14 @@ export class ArcEoaSettlementProvider implements SettlementProvider {
     // a settlement is exactly the burst that trips it.
     const transport = pacedTransport();
     this.address = account.address;
-    this.wallet = createWalletClient({ account, chain: arcTestnet, transport });
-    this.publicClient = createPublicClient({ chain: arcTestnet, transport });
+    this.wallet = createWalletClient({ account, chain: arcChain, transport });
+    this.publicClient = createPublicClient({ chain: arcChain, transport });
   }
 
   /** The agent's USDC balance in smallest units, read from the ERC-20 view. */
   async balanceUnits(): Promise<bigint> {
     return this.publicClient.readContract({
-      address: ARC_TESTNET_USDC as Hex,
+      address: ARC.usdc as Hex,
       abi: ERC20_TRANSFER,
       functionName: "balanceOf",
       args: [this.address as Hex],
@@ -119,7 +112,7 @@ export class ArcEoaSettlementProvider implements SettlementProvider {
     if (units <= 0n) return { txHash: "", explorerUrl: "", network: this.network };
 
     const txHash = await this.wallet.writeContract({
-      address: ARC_TESTNET_USDC as Hex,
+      address: ARC.usdc as Hex,
       abi: ERC20_TRANSFER,
       functionName: "transfer",
       args: [to as Hex, units],

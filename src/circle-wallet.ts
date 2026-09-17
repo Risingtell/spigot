@@ -1,5 +1,5 @@
 ﻿/**
- * Circle developer-controlled wallets on Arc Testnet.
+ * Circle developer-controlled wallets on Arc.
  *
  * Each autonomous agent, and each service provider, is a real Circle wallet on
  * Arc. The agent holds USDC and pays providers directly, wallet to wallet, with
@@ -9,7 +9,7 @@
  */
 
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
-import { ARC_BLOCKCHAIN, ARC_TESTNET_USDC, USDC_DECIMALS, arcTxUrl } from "./arc";
+import { ARC, USDC_DECIMALS, arcTxUrl } from "./arc";
 
 const apiKey = process.env.CIRCLE_API_KEY;
 const entitySecret = process.env.CIRCLE_ENTITY_SECRET;
@@ -33,12 +33,12 @@ export interface ArcWallet {
   address: string;
 }
 
-/** Create a developer-controlled wallet on Arc Testnet (refId = agent/provider label). */
+/** Create a developer-controlled wallet on Arc (refId = agent/provider label). */
 export async function createArcWallet(refId: string): Promise<ArcWallet> {
   if (!walletSetId) throw new Error("Circle is not configured (CIRCLE_WALLET_SET_ID).");
   const res = await client().createWallets({
     walletSetId,
-    blockchains: [ARC_BLOCKCHAIN],
+    blockchains: [ARC.circleBlockchain],
     count: 1,
     accountType: "EOA",
     metadata: [{ refId }],
@@ -102,7 +102,7 @@ export async function payAndConfirm(opts: {
 
   const created = await client().createContractExecutionTransaction({
     walletId: opts.walletId,
-    contractAddress: ARC_TESTNET_USDC,
+    contractAddress: ARC.usdc,
     abiFunctionSignature: "transfer(address,uint256)",
     abiParameters: [opts.to, opts.amountUnits],
     fee: { type: "level", config: { feeLevel: "MEDIUM" } },

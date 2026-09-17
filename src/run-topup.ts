@@ -14,7 +14,8 @@
  *   SPIGOT_ARC_KEY           - the agent's key, the same one that settles
  *   SPIGOT_AGENT_ADDRESS     - its Arc address, which receives the mint
  *
- * Optional: SPIGOT_RESERVE_CHAIN, the chain `--fund` deposits from (Base_Sepolia).
+ * Optional: SPIGOT_RESERVE_CHAIN, the chain `--fund` deposits from (Base on
+ * mainnet, Base_Sepolia on testnet).
  */
 
 import { ArcEoaSettlementProvider, arcKeyConfigured } from "./arc-eoa";
@@ -22,6 +23,7 @@ import {
   drawToArc,
   fundReserve,
   planTopUp,
+  DEFAULT_RESERVE_CHAIN,
   treasuryPolicy,
   unifiedBalance,
   type DepositChain,
@@ -29,8 +31,8 @@ import {
 } from "./treasury";
 import { unitsToUsdc } from "./arc";
 
-const reserveChain = (process.env.SPIGOT_RESERVE_CHAIN as ReserveChain | undefined) ?? "Base_Sepolia";
-/** `--from <chain>` overrides where a deposit is taken from, Arc_Testnet included. */
+const reserveChain = (process.env.SPIGOT_RESERVE_CHAIN as ReserveChain | undefined) ?? DEFAULT_RESERVE_CHAIN;
+/** `--from <chain>` overrides where a deposit is taken from, Arc itself included. */
 const depositChain = (): DepositChain => {
   const i = process.argv.indexOf("--from");
   return i === -1 ? reserveChain : (process.argv[i + 1] as DepositChain);

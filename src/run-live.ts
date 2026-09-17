@@ -4,7 +4,7 @@
  *   npm run agent
  *
  * The same agent loop as the demo, settling for real: every settlement is a
- * confirmed USDC transfer to the provider on Arc Testnet, and the cadence is set by
+ * confirmed USDC transfer to the provider on Arc, and the cadence is set by
  * Arc's live fee market so the chain never takes more than a few percent of what it
  * moves. Requires, in .env.local:
  *
@@ -12,7 +12,7 @@
  *
  * plus one way for the agent to pay. Either a plain Arc key, which is the quickest:
  *
- *   SPIGOT_ARC_KEY           - a key holding USDC, funded at faucet.circle.com
+ *   SPIGOT_ARC_KEY           - a key holding USDC on Arc (faucet.circle.com on testnet)
  *
  * or Circle developer-controlled wallets:
  *
@@ -24,7 +24,7 @@ import { MemoryStore, StreamingMeter, type SettlementProvider } from "meter402";
 import { ArcSettlementProvider } from "./arc-provider";
 import { ArcEoaSettlementProvider, arcKeyConfigured } from "./arc-eoa";
 import { StreamingAgent, type TickContext } from "./agent";
-import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc";
+import { ARC, unitsToUsdc } from "./arc";
 import { circleConfigured } from "./circle-wallet";
 import { economicSettlementSeconds, fetchSettlementCost, minEconomicSettlementUnits } from "./arc-gas";
 
@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   }
 
   // Two ways to hold funds on Arc, and the agent will take whichever is configured.
-  // A plain key is the shortest route: fund it from faucet.circle.com and go. Circle
+  // A plain key is the shortest route: send it some USDC on Arc and go. Circle
   // developer-controlled wallets are the route with an organisation behind them.
   let settlement: SettlementProvider;
   let agentWallet: string;
@@ -51,7 +51,11 @@ async function main(): Promise<void> {
     const balance = await arc.balanceUnits();
     console.log(`Agent key ${arc.address} holds $${unitsToUsdc(balance.toString()).toFixed(6)} USDC on Arc.`);
     if (balance === 0n) {
-      console.error("That wallet has no USDC. Fund it at https://faucet.circle.com and run this again.");
+      console.error(
+        ARC.faucet
+          ? `That wallet has no USDC. Fund it at ${ARC.faucet} (${ARC.name}) and run this again.`
+          : `That wallet has no USDC on ${ARC.name}. Send some to ${arc.address} and run this again.`,
+      );
       process.exitCode = 1;
       return;
     }
@@ -81,13 +85,13 @@ async function main(): Promise<void> {
   const meter = new StreamingMeter(store, {
     payTo: providerAddress,
     maxTickSeconds: 60,
-    network: ARC_TESTNET_CAIP2,
+    network: ARC.caip2,
   });
 
   const cost = await fetchSettlementCost();
   const minSettle = minEconomicSettlementUnits(cost.costUnits, MAX_OVERHEAD_RATIO);
 
-  console.log("Spigot - LIVE on Arc Testnet. Each settlement is a real USDC transfer.\n");
+  console.log(`Spigot - LIVE on ${ARC.name} (chain ${ARC.chainId}). Each settlement is a real USDC transfer.\n`);
   console.log(`  gas price:       ${cost.gasPriceGwei.toFixed(4)} gwei  (${cost.source})`);
   console.log(`  one settlement:  $${unitsToUsdc(cost.costUnits).toFixed(6)} USDC`);
   console.log(

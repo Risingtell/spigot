@@ -8,7 +8,8 @@
  * are appended to .env.local, which is gitignored; only the public addresses are
  * printed, so a key never reaches a terminal transcript, a screenshot or a chat.
  *
- * Fund the agent address at https://faucet.circle.com (Arc Testnet, USDC), then
+ * Fund the agent address with USDC on Arc (mainnet: send from an exchange or
+ * bridge; testnet: https://faucet.circle.com), then
  * `npm run agent` settles for real.
  */
 
@@ -16,7 +17,7 @@ import { randomBytes } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
-import { ARC_TESTNET_RPC, ARC_EXPLORER } from "../src/arc";
+import { ARC } from "../src/arc";
 
 const ENV_PATH = resolve(process.cwd(), ".env.local");
 
@@ -52,15 +53,19 @@ if (alreadySet("SPIGOT_ARC_KEY")) {
     "utf8",
   );
 
-  console.log("Two Arc Testnet addresses generated. Keys are in .env.local, which git ignores.\n");
+  console.log(`Two ${ARC.name} addresses generated. Keys are in .env.local, which git ignores.\n`);
   console.log("  AGENT (fund this one, it signs and pays)");
   console.log(`    ${agent.address}`);
-  console.log(`    ${ARC_EXPLORER}/address/${agent.address}\n`);
+  console.log(`    ${ARC.explorer}/address/${agent.address}\n`);
   console.log("  PROVIDER (receives settlement, needs no funding)");
   console.log(`    ${provider.address}\n`);
   console.log("Next:");
-  console.log("  1. Fund the AGENT address with USDC at https://faucet.circle.com (network: Arc Testnet)");
-  console.log("  2. npm run agent          settles for real against " + ARC_TESTNET_RPC);
+  console.log(
+    ARC.faucet
+      ? `  1. Fund the AGENT address with USDC at ${ARC.faucet} (network: ${ARC.name})`
+      : `  1. Send a few USDC to the AGENT address on ${ARC.name} (chain id ${ARC.chainId}). Gas is USDC too, so nothing else is needed.`,
+  );
+  console.log("  2. npm run agent          settles for real against " + ARC.rpc);
   console.log("  3. npm run verify         re-derives every settlement from the chain");
   console.log("\nNever paste the contents of .env.local anywhere.");
 }

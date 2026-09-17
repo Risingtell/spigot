@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { unitsToUsdc } from "@/src/arc";
 import { ArcEoaSettlementProvider, arcKeyConfigured } from "@/src/arc-eoa";
-import { planTopUp, treasuryPolicy, unifiedBalance } from "@/src/treasury";
+import { DEFAULT_RESERVE_CHAIN, planTopUp, treasuryPolicy, unifiedBalance } from "@/src/treasury";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +46,7 @@ export async function GET() {
       new ArcEoaSettlementProvider().balanceUnits(),
     ]);
 
-    const policy = treasuryPolicy({ floorUsdc: FLOOR_USDC, targetUsdc: TARGET_USDC, reserveChain: "Base_Sepolia" });
+    const policy = treasuryPolicy({ floorUsdc: FLOOR_USDC, targetUsdc: TARGET_USDC, reserveChain: DEFAULT_RESERVE_CHAIN });
     const plan = planTopUp(onArc.toString(), policy);
 
     const body = {

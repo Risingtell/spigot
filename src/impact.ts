@@ -15,7 +15,7 @@
 
 import { GatewayClient } from "@circle-fin/x402-batching/client";
 import seed from "./seed.json" with { type: "json" };
-import { ARC_TESTNET_CAIP2, unitsToUsdc } from "./arc";
+import { ARC, unitsToUsdc } from "./arc";
 import {
   BLOCKS_PER_CHUNK,
   PROVIDER_LABEL,
@@ -326,7 +326,7 @@ export async function buildImpact(): Promise<Impact> {
   const combinedUnits = BigInt(onChain.totalUnits) + BigInt(gateway.totalUnits);
 
   return {
-    network: ARC_TESTNET_CAIP2,
+    network: ARC.caip2,
     agent: agentAddress,
     provider: providerAddress,
     onChain,

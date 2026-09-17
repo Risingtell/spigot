@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { MemoryStore, MockSettlementProvider, StreamingMeter, type SettlementProvider } from "meter402";
 import { StreamingAgent, type TickContext } from "@/src/agent";
-import { ARC_TESTNET_CAIP2, unitsToUsdc } from "@/src/arc";
+import { ARC, unitsToUsdc } from "@/src/arc";
 import { economicSettlementSeconds, fetchSettlementCost, minEconomicSettlementUnits } from "@/src/arc-gas";
 import { ArcEoaSettlementProvider, arcKeyConfigured } from "@/src/arc-eoa";
 import { NanoSettlementProvider, nanoConfigured } from "@/src/nano";
@@ -51,7 +51,7 @@ const SIMULATED_PROVIDER = "0xProviderTreasury000000000000000000000000";
  */
 const MIN_LIVE_GAP_MS = 15_000;
 /** Stop settling live once the wallet falls to this, so the demo cannot drain itself. */
-const RESERVE_UNITS = 5_000_000n; // $5 of testnet USDC
+const RESERVE_UNITS = 2_000_000n; // $2 of USDC stays in the wallet
 /** The same idea for the Gateway balance the gas-free rail spends from. */
 const GATEWAY_RESERVE_UNITS = 200_000n; // $0.20
 /** Re-reading the balance every click would be its own rate-limit problem. */
@@ -230,7 +230,7 @@ async function runNanoBody(
       payTo,
     },
   ]);
-  const meter = new StreamingMeter(store, { payTo, maxTickSeconds: 60, network: ARC_TESTNET_CAIP2 });
+  const meter = new StreamingMeter(store, { payTo, maxTickSeconds: 60, network: ARC.caip2 });
 
   // No settlement economics: gas per block is zero on this rail, so there is
   // nothing to batch around and every metered interval can settle on its own.
@@ -353,7 +353,7 @@ async function runDirect(scenario: Scenario) {
       payTo,
     },
   ]);
-  const meter = new StreamingMeter(store, { payTo, maxTickSeconds: 60, network: ARC_TESTNET_CAIP2 });
+  const meter = new StreamingMeter(store, { payTo, maxTickSeconds: 60, network: ARC.caip2 });
 
   // What one settlement costs on Arc right now. This is a live read, not a constant.
   const cost = await fetchSettlementCost();
@@ -440,7 +440,7 @@ export async function POST(req: Request) {
         // available is worth stating; a rail that pretends is worth nothing.
         return NextResponse.json({ rail, mode: "unavailable", reason: nano.unavailable }, { status: 200 });
       }
-      return NextResponse.json({ rail, mode: "live", network: ARC_TESTNET_CAIP2, ...nano });
+      return NextResponse.json({ rail, mode: "live", network: ARC.caip2, ...nano });
     } catch (err) {
       return NextResponse.json(
         { rail, mode: "unavailable", reason: (err as Error).message },
@@ -450,5 +450,5 @@ export async function POST(req: Request) {
   }
 
   const direct = await runDirect(SCENARIOS[scenarioId]);
-  return NextResponse.json({ rail, network: ARC_TESTNET_CAIP2, ...direct });
+  return NextResponse.json({ rail, network: ARC.caip2, ...direct });
 }

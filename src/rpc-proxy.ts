@@ -2,7 +2,7 @@
  * A pacing proxy in front of Arc's public RPC.
  *
  * Arc's public endpoint does not just cap request volume, it caps concurrency,
- * and hard. Measured against rpc.testnet.arc.network: three simultaneous
+ * and hard. Measured against the public testnet RPC: three simultaneous
  * eth_calls reliably lose one to "request limit reached", six lose one, twelve
  * lose three. Sequentially the same calls all succeed.
  *
@@ -19,7 +19,7 @@
  */
 
 import { createServer, type Server } from "node:http";
-import { ARC_TESTNET_RPC } from "./arc";
+import { ARC } from "./arc";
 
 export interface RpcProxyOptions {
   upstream?: string;
@@ -39,7 +39,7 @@ export interface RpcProxy {
 const THROTTLED = /request limit|rate.?limit|too many requests|limit reached|429/i;
 
 export async function startRpcProxy(opts: RpcProxyOptions = {}): Promise<RpcProxy> {
-  const upstream = opts.upstream ?? ARC_TESTNET_RPC;
+  const upstream = opts.upstream ?? ARC.rpc;
   const concurrency = Math.max(1, opts.concurrency ?? 1);
   const minGapMs = opts.minGapMs ?? 90;
   const attempts = opts.attempts ?? 6;
