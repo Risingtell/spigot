@@ -12,16 +12,19 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | | |
 | --- | --- |
 | Chain | **Arc mainnet** (chain id 5042), USDC as the gas token. `SPIGOT_NETWORK=testnet` switches every path to Arc Testnet (5042002) |
-| Settled on the direct rail | **19 settlements, $1.6985 USDC**, every one a `Transfer` in Arc's token ledger |
-| Settled gas free | **4 settlements, $0.3997 USDC** through Circle Nanopayments, signed off-chain and batched by Circle |
-| Both rails together | **41 settlements, $3.4204 USDC** at the time of writing, and climbing every time somebody runs the hosted console live |
+| Settled on the direct rail | **8 settlements, $0.6415 USDC on Arc mainnet**, every one a `Transfer` in Arc's token ledger, from block 21394997 |
+| Settled gas free | **6 settlements, $0.3688 USDC** through Circle Nanopayments on mainnet, signed off-chain and batched by Circle |
+| Both rails together | **14 settlements, $1.0103 USDC** on the day mainnet went live (17 Sep 2026), and climbing every time somebody runs the hosted console live |
 | Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
 | Tests | **29 passing**, over the rules that move money |
 | SDK | built on [meter402](https://www.npmjs.com/package/meter402), published on npm |
 
-Those numbers are a floor, not a boast, and they are the wrong way round on purpose:
+Spigot was built and proven on Arc Testnet during the hackathon and moved to Arc
+mainnet on 17 September 2026; the testnet history is still provable with
+`SPIGOT_NETWORK=testnet npm run verify`. The mainnet numbers above are a floor,
+not a boast, and they are the wrong way round on purpose:
 the hosted console settles for real, so the count above goes up on its own and the
 figure here goes stale downwards rather than upwards. The live one is at
 [`/api/impact`](https://spigot-taupe.vercel.app/api/impact) and the authoritative one
@@ -29,11 +32,30 @@ comes from the chain:
 
 Run `npm run verify` on a fresh clone and it will re-derive Spigot's own settlements
 straight from Arc, with nothing configured. The totals it prints are not read from
-this repo or from any server we control. It walks 59 windows of Arc's log index and
-takes roughly two minutes, printing progress as it goes.
+this repo or from any server we control. It walks Arc's log index from the first
+mainnet settlement to the head, one window per 9,000 blocks, printing progress as
+it goes.
 
 Built on [meter402](https://github.com/Risingtell/meter402), the open-source
 per-second settlement primitive this project consumes as a published npm package.
+
+## On Arc mainnet
+
+Everything a reader needs to check the claim without cloning anything:
+
+| | |
+| --- | --- |
+| Network | Arc mainnet, chain id `5042`, public RPC `https://rpc.mainnet.arc.io` |
+| USDC | `0x3600000000000000000000000000000000000000` (gas and settlement are the same balance) |
+| Agent | [`0xCCAC4D9416280d6c1492dCC0D4c4e501b99fA8bC`](https://explorer.arc.io/address/0xCCAC4D9416280d6c1492dCC0D4c4e501b99fA8bC), the wallet that signs and pays |
+| Provider | [`0xEb115F0E1a2b10651051f10BBF33845242e3D633`](https://explorer.arc.io/address/0xEb115F0E1a2b10651051f10BBF33845242e3D633), where settlement lands |
+| First settlement | [`0x1821dfa4…aa00b0b`](https://explorer.arc.io/tx/0x1821dfa471652e6623c698fb339e147dcb62ce50f3182422f49ae0300aa00b0b), block 21394997, $0.0507 for 1.01s of inference capacity |
+| Funding path | $3.20 USDC deposited into Circle Gateway on Base, drawn onto Arc by the Unified Balance Kit through Circle's Forwarder, so the agent never needed gas anywhere but Arc |
+| Gas-free rail | $1.00 deposited into Gateway on Arc, then blocks bought off-chain through `@circle-fin/x402-batching` against the hosted seller |
+
+The hosted console at [spigot-taupe.vercel.app](https://spigot-taupe.vercel.app)
+runs both rails against this wallet for real, behind a spend cap, so every hash it
+shows can be followed to [explorer.arc.io](https://explorer.arc.io).
 
 ## The problem, and the part everyone skips
 
@@ -49,7 +71,7 @@ half of that problem: USDC *is* the gas token, so the fee and the payment are th
 same asset and directly comparable.
 
 It does not remove the other half, and this is the part a demo usually hides. Right
-now Arc quotes around 25 gwei, so one USDC transfer costs roughly **$0.0016**. A
+now Arc mainnet quotes about 20 gwei, so one USDC transfer costs roughly **$0.0013**. A
 market-data feed at $0.001/sec would hand the chain **more than the provider
 earns** if it settled every second.
 

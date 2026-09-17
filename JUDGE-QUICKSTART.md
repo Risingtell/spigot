@@ -52,11 +52,11 @@ This is the load-bearing command. It needs no keys and no configuration. It:
    token's `Transfer` logs, over the full history from the first settlement to the
    current head.
 
-**It takes about two minutes and prints progress while it runs.** Arc caps a log
-query at 10,000 blocks and throttles the calls, so step 3 is 59 sequential windows
-and climbing. It waits the throttle out rather than failing, and if a window still
-cannot be read it says so and calls the total a floor instead of quietly reporting
-a short count.
+**It prints progress while it runs.** Arc caps a log query at 10,000 blocks and
+throttles the calls, so step 3 is a sequence of windows from the first mainnet
+settlement (block 21394997) to the head, one more every 9,000 blocks. It waits the
+throttle out rather than failing, and if a window still cannot be read it says so
+and calls the total a floor instead of quietly reporting a short count.
 
 Every number it prints comes from Arc. Nothing is read from a Spigot server or
 database. Cross-check any hash or the agent's balance on
@@ -67,21 +67,23 @@ should match exactly:
 
 ```
 Fee market
-  chain id:          5042002 (Arc Testnet)
-  gas price:         23.0000 gwei  (live)
-  one settlement:    $0.001495 at 65000 gas
-  economical floor:  $0.029900 to keep the chain fee under 5%
-  cadence:           settle about every 30s on a $0.001/sec stream
+  rpc:               https://rpc.mainnet.arc.io
+  chain id:          5042 (Arc)
+  gas price:         20.1000 gwei  (live)
+  one settlement:    $0.001307 at 65000 gas
+  economical floor:  $0.026140 to keep the chain fee under 5%
+  cadence:           settle about every 26s on a $0.001/sec stream
 
 Settlements
-  agent:             0x201EE872d4b1a3c06589032F682004a09ddB6aBA
-  settlements:       16
-  total settled:     $1.515800
-    excluded, not a settlement: 1 transfer(s) to Circle Gateway deposit, $2.000000
-  chain fee share:   1.58% of each settlement
+  agent:             0xCCAC4D9416280d6c1492dCC0D4c4e501b99fA8bC
+  token:             0x3600000000000000000000000000000000000000 (USDC on Arc)
+  settlements:       8
+  total settled:     $0.641500
+    excluded, not a settlement: 1 transfer(s) to Circle Gateway deposit, $1.000000
+  chain fee share:   1.63% of each settlement
 ```
 
-That excluded line is the point of the whole project in one row: the $2 that
+That excluded line is the point of the whole project in one row: the $1 that
 funded the Gateway balance is also a transfer out of the agent, and counting it as
 revenue is exactly the overclaim this build exists to refuse.
 
