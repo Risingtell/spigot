@@ -20,8 +20,8 @@ export const maxDuration = 30;
  * here is stored, same as the impact feed.
  */
 
-const FLOOR_USDC = 5;
-const TARGET_USDC = 20;
+const FLOOR_USDC = 0.5;
+const TARGET_USDC = 2;
 
 let cached: { at: number; body: unknown } | null = null;
 const CACHE_MS = 30_000;
