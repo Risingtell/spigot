@@ -134,7 +134,7 @@ export default function Home() {
             <p className="eyebrow eyebrow--onDark">Live on two rails</p>
             <div className="stats__grid">
               <div className="rv">
-                <span className="stat__n">$0.0016</span>
+                <span className="stat__n">$0.0013</span>
                 <span className="stat__l">Gas per settlement on the direct Arc rail</span>
               </div>
               <div className="rv">

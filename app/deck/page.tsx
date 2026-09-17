@@ -94,7 +94,7 @@ const SLIDES: Slide[] = [
         </p>
         <Figs
           items={[
-            ["~$0.0016", "gas per direct settlement"],
+            ["~$0.0013", "gas per direct settlement"],
             ["$0.00", "gas per nanopayment"],
             ["1 agent", "identical policy on both"],
           ]}

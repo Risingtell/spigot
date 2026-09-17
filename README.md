@@ -286,12 +286,12 @@ keeps only a few dollars in the agent wallet. Beyond that:
   `npm run verify` re-derives the same settlements from genesis to the chain head
   without reading the seed at all. The gas-free half is never seeded: it lives in
   Circle's API, not in a block, so it is fetched live every time.
-- **Sixteen deep transitive advisories remain open**, all inside Circle's own
-  SDKs (`@solana/web3.js`, `@ethersproject/*`, `@coral-xyz/anchor`) with no fix
-  published upstream. None is high or critical severity; three that briefly were
-  (`fast-uri`, `ip-address`, `nanoid`) are fixed as each was disclosed. Every
-  high-severity one is closed, by pinning `postcss` and `sharp` through
-  `overrides` rather than downgrading the framework.
+- **Nineteen deep transitive advisories remain open**, all low or moderate and
+  all inside Circle's own SDKs (`@solana/web3.js`, `@ethersproject/*`,
+  `@coral-xyz/anchor`) with no fix published upstream. Every high or critical
+  one is closed: `next`, `sharp`, `fast-uri` and `toml` are held past their
+  advisories through direct upgrades and `overrides` rather than by downgrading
+  the framework, and `npm audit` is re-run before every deploy.
 - **The value signal is one feed.** Trade flow from one exchange ticker drives the
   decision. It is real and it was measured before being trusted, but it is a
   single source, and a production buyer would want more than one.
