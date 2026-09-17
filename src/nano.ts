@@ -37,7 +37,7 @@ export const GATEWAY_API = ARC.gatewayApi;
 /** Keep at least this much in the Gateway balance, in whole USDC. */
 const MIN_GATEWAY_BALANCE = 0.5;
 /** Top the Gateway balance up to this when it runs low. */
-const GATEWAY_TARGET = 2;
+const GATEWAY_TARGET = 1;
 
 export interface NanoOptions {
   /** The agent's Arc key. Read from SPIGOT_ARC_KEY when omitted. */

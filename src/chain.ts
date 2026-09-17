@@ -23,7 +23,7 @@ const PROOF_ANCHORS = {
   mainnet: {
     agent: "0xCCAC4D9416280d6c1492dCC0D4c4e501b99fA8bC",
     provider: "0xEb115F0E1a2b10651051f10BBF33845242e3D633",
-    genesisBlock: 21_315_000,
+    genesisBlock: 21_394_997,
   },
   testnet: {
     agent: "0x201EE872d4b1a3c06589032F682004a09ddB6aBA",
