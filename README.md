@@ -286,12 +286,17 @@ keeps only a few dollars in the agent wallet. Beyond that:
   `npm run verify` re-derives the same settlements from genesis to the chain head
   without reading the seed at all. The gas-free half is never seeded: it lives in
   Circle's API, not in a block, so it is fetched live every time.
-- **Nineteen deep transitive advisories remain open**, all low or moderate and
-  all inside Circle's own SDKs (`@solana/web3.js`, `@ethersproject/*`,
-  `@coral-xyz/anchor`) with no fix published upstream. Every high or critical
-  one is closed: `next`, `sharp`, `fast-uri` and `toml` are held past their
-  advisories through direct upgrades and `overrides` rather than by downgrading
-  the framework, and `npm audit` is re-run before every deploy.
+- **A tail of low and moderate transitive advisories stays open**, all inside
+  Circle's own SDKs (`@solana/web3.js`, `@ethersproject/*`, `@coral-xyz/anchor`)
+  with no fix published upstream. Deliberately not quoted as a number here,
+  because that number moves on its own: run `npm audit` for today's figure.
+  What is held is the line that matters, **no high or critical advisory open**,
+  through direct upgrades and `overrides` rather than by downgrading the
+  framework. CI runs `npm audit --audit-level=high` on every push and again on a
+  daily schedule, because an advisory published against a version you already
+  shipped is the case a push-triggered check never sees. That is not
+  hypothetical: on 3 Oct a new `next` advisory landed on a version that audited
+  clean the day before.
 - **The value signal is one feed.** Trade flow from one exchange ticker drives the
   decision. It is real and it was measured before being trusted, but it is a
   single source, and a production buyer would want more than one.

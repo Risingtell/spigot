@@ -5,6 +5,10 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  # An advisory published against a version already shipped is the case a
+  # push-triggered check never sees, so audit on a clock as well.
+  schedule:
+    - cron: "17 6 * * *"
 
 jobs:
   build:
@@ -21,3 +25,7 @@ jobs:
       # no key, no wallet and no network access to a chain.
       - run: npm test
       - run: npm run build
+      # Fails the run on a high or critical advisory. The low and moderate tail
+      # lives inside Circle's SDKs with no fix published upstream, so it is
+      # reported, not gated.
+      - run: npm audit --audit-level=high
