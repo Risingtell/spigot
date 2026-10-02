@@ -53,6 +53,22 @@ export interface NanoOptions {
   policyCheck?: (amountUnits: string) => string | null;
 }
 
+/**
+ * What the agent can spend inside Gateway right now, without opening a session.
+ *
+ * The console needs this before a run, to say whether the next click will settle
+ * for real or fall back to a mock. Reading it through the settlement provider
+ * would mean naming a seller URL that is never called, so the client is built
+ * directly here and only asked for a balance.
+ */
+export async function gatewayAvailableUnits(): Promise<bigint> {
+  const key = process.env.SPIGOT_ARC_KEY;
+  if (!key) throw new Error("No Arc key: the Gateway balance cannot be read.");
+  const privateKey = (key.startsWith("0x") ? key : `0x${key}`) as `0x${string}`;
+  const gateway = new GatewayClient({ chain: GATEWAY_CHAIN, privateKey, rpcUrl: ARC.rpc });
+  return withRetry(async () => (await gateway.getBalance()).available, { label: "getGatewayBalance" });
+}
+
 /** True when an Arc key is configured, so Nanopayments settlement is possible. */
 export function nanoConfigured(): boolean {
   return Boolean(process.env.SPIGOT_ARC_KEY);

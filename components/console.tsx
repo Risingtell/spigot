@@ -46,6 +46,12 @@ interface Market {
   closedAtTradesPerSecond: number;
   targetTradesPerSecond: number;
 }
+interface RailReadiness {
+  live: boolean;
+  balanceUsd: number | null;
+  reserveUsd: number;
+}
+
 interface Treasury {
   available: boolean;
   reason?: string;
@@ -53,6 +59,14 @@ interface Treasury {
   unified?: { totalUsd: number; chains: { chain: string; usd: number }[] };
   policy?: { floorUsd: number; targetUsd: number };
   decision?: { needed: boolean; reason: string; wouldDrawUsd: number };
+  /** What the next click will do, from the same reserves `/api/run` decides with. */
+  readiness?: {
+    network: string;
+    chainId: number;
+    agentUrl: string;
+    direct: RailReadiness;
+    nano: RailReadiness;
+  };
 }
 
 type Rail = "direct" | "nano";
@@ -141,6 +155,16 @@ export function Console() {
       }
       setDecision(data.decision);
       setStatus("done");
+      // A live run moves real money, so the balances the page is showing are now
+      // out of date - including the reserve check behind the live/simulated
+      // badge. Re-read them rather than let the page keep asserting a number it
+      // just spent through.
+      fetch("/api/treasury")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d) setTreasury(d);
+        })
+        .catch(() => undefined);
     } catch (err) {
       // Silently dropping back to idle left the button looking like it did
       // nothing, which reads as broken rather than as a failed call. Say what
@@ -156,6 +180,23 @@ export function Console() {
   const pct = budget > 0 ? Math.min(100, (spent / budget) * 100) : 0;
   const live = status === "running";
   const started = played.length > 0 || live;
+
+  // Which rail's reserve applies, what it says, and what to call it on screen.
+  const railReadiness = rail === "nano" ? treasury?.readiness?.nano : treasury?.readiness?.direct;
+  const railLabel = rail === "nano" ? "The Gateway balance" : "The wallet";
+  const readinessNetwork = treasury?.readiness?.network ?? fee?.network ?? "Arc";
+  /**
+   * After a run this is what happened; before one it is what the reserves say is
+   * about to happen. Undefined only while the treasury is still loading, which is
+   * shown as "checking" rather than guessed either way.
+   */
+  const railMode: "live" | "simulated" | null = mode
+    ? mode
+    : railReadiness === undefined
+      ? null
+      : railReadiness.live
+        ? "live"
+        : "simulated";
 
   return (
     <div className="text-[color:hsl(var(--foreground))]">
@@ -248,7 +289,51 @@ export function Console() {
         ))}
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
+      {/*
+        Live or simulated, stated before the click rather than discovered after it.
+
+        The console deliberately falls back to a mock when the wallet is down to
+        its reserve, which is honest engineering and easy to misread: a reviewer
+        who sees a run replay without reading the small print could take a
+        simulated run for production behaviour. So the mode is named in the one
+        place nobody can miss, above the button, and it is a prediction before the
+        run and a statement of fact after it. The reserves it reads are the same
+        constants the route enforces, so the two cannot drift apart.
+      */}
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border border-white/15 bg-white/[0.03] px-4 py-3">
+        <div className="flex items-center gap-3">
+          <span
+            className={`inline-flex items-center px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] ${
+              railMode === "live"
+                ? "bg-[color:var(--green)] text-black"
+                : railMode === "simulated"
+                  ? "border border-amber-400/50 text-amber-300"
+                  : "border border-white/20 text-white/40"
+            }`}
+          >
+            {mode ? "This run" : "Next run"}: {railMode === "live" ? "Live" : railMode === "simulated" ? "Simulated" : "Checking"}
+          </span>
+          <span className="text-[0.76rem] leading-snug text-white/60">
+            {railMode === "live"
+              ? `Real USDC settles on ${readinessNetwork}. Every hash below opens the explorer.`
+              : railMode === "simulated"
+                ? `${railLabel} is at its $${(railReadiness?.reserveUsd ?? 0).toFixed(2)} reserve, so the agent runs against a mock provider and nothing settles.`
+                : "Reading the agent's balance."}
+          </span>
+        </div>
+        {treasury?.readiness?.agentUrl && (
+          <a
+            href={treasury.readiness.agentUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-[color:var(--amber)] underline-offset-4 hover:underline"
+          >
+            Agent ledger on the explorer →
+          </a>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
         <button
           onClick={run}
           disabled={live}

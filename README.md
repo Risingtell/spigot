@@ -1,13 +1,21 @@
 # Spigot
 
-**Agent-native streaming settlement on Arc.** An autonomous agent holds a metered
-service, prices every second of it against what that second is worth, settles in
-USDC on the cadence Arc's own fee market allows, and shuts its own gate the moment
-the answer turns.
+**Spigot lets an AI agent buy a live data or inference stream in USDC on Arc,
+second by second, and stop paying the moment the stream stops being worth it.**
+
+No subscription, no prepaid credits, nobody clicking pay. The agent opens a
+metered session under a hard budget, prices every second against what that second
+is worth, settles on the cadence Arc's own fee market allows, and closes its own
+gate when value falls below cost.
+
+Arc is what makes that arithmetic close. USDC is both the thing being bought and
+the gas paid to settle it, so the agent can compare the fee and the payment in one
+unit and decide, per second, whether settling is economically rational at all. On a
+chain where gas is a separate volatile asset, that comparison has no stable answer.
 
 **[Live demo](https://spigot-taupe.vercel.app)** ·
 **[Repo](https://github.com/Risingtell/spigot)** ·
-Encode x Arc Programmable Money Hackathon, Agentic Economy track
+Built at the Encode x Arc Programmable Money Hackathon, now live on Arc mainnet
 
 | | |
 | --- | --- |
@@ -38,6 +46,20 @@ it goes.
 
 Built on [meter402](https://github.com/Risingtell/meter402), the open-source
 per-second settlement primitive this project consumes as a published npm package.
+
+## What a microgrant would fund
+
+One sentence, so it can be held against us:
+
+> **Onboard one external stream provider, settle 100 independently attributable
+> Arc mainnet blocks against it, and publish a seller starter so any Arc service
+> can sell its output by the second.**
+
+The honest gap today is on the demand side, and it is stated here rather than left
+for a reviewer to find: every settlement below is Spigot's own agent paying
+Spigot's own provider treasury. That proves the mechanism end to end and proves
+nothing about appetite. One counterparty we do not control is what turns this from
+a working prototype into evidence, and it is what the money would buy.
 
 ## On Arc mainnet
 

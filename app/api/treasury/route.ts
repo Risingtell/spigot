@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { unitsToUsdc } from "@/src/arc";
 import { ArcEoaSettlementProvider, arcKeyConfigured } from "@/src/arc-eoa";
 import { DEFAULT_RESERVE_CHAIN, planTopUp, treasuryPolicy, unifiedBalance } from "@/src/treasury";
+import { DIRECT_RESERVE_UNITS, GATEWAY_RESERVE_UNITS } from "@/src/reserves";
+import { gatewayAvailableUnits } from "@/src/nano";
+import { ARC, arcAddressUrl } from "@/src/arc";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,9 +44,12 @@ export async function GET() {
   }
 
   try {
-    const [balance, onArc] = await Promise.all([
+    const [balance, onArc, gatewayUnits] = await Promise.all([
       unifiedBalance(key),
       new ArcEoaSettlementProvider().balanceUnits(),
+      // A rail that cannot be read is reported as not ready rather than assumed
+      // ready: the page would otherwise promise a live run it cannot deliver.
+      gatewayAvailableUnits().catch(() => null),
     ]);
 
     const policy = treasuryPolicy({ floorUsdc: FLOOR_USDC, targetUsdc: TARGET_USDC, reserveChain: DEFAULT_RESERVE_CHAIN });
@@ -58,6 +64,26 @@ export async function GET() {
         chains: balance.perChain.map((c) => ({ chain: c.chain, usd: c.usd })),
       },
       policy: { floorUsd: FLOOR_USDC, targetUsd: TARGET_USDC },
+      /**
+       * What the next click will actually do, decided by the same two constants
+       * `/api/run` decides with. Reported per rail, because they draw on
+       * different balances and run dry independently.
+       */
+      readiness: {
+        network: ARC.name,
+        chainId: ARC.chainId,
+        agentUrl: arcAddressUrl(new ArcEoaSettlementProvider().address),
+        direct: {
+          live: onArc >= DIRECT_RESERVE_UNITS,
+          balanceUsd: unitsToUsdc(onArc.toString()),
+          reserveUsd: unitsToUsdc(DIRECT_RESERVE_UNITS.toString()),
+        },
+        nano: {
+          live: gatewayUnits !== null && gatewayUnits >= GATEWAY_RESERVE_UNITS,
+          balanceUsd: gatewayUnits === null ? null : unitsToUsdc(gatewayUnits.toString()),
+          reserveUsd: unitsToUsdc(GATEWAY_RESERVE_UNITS.toString()),
+        },
+      },
       decision: {
         needed: plan.needed,
         reason: plan.reason,

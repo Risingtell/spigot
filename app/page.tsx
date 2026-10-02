@@ -105,9 +105,9 @@ export default function Home() {
                 <span className="l">stop paying.</span>
               </h1>
               <p className="hero__sub">
-                Circle built the rail. Spigot is the buyer: an agent that holds a metered service, prices every second
-                against what that second is worth, and shuts its own gate the moment the answer turns. Live on two
-                rails, settling real USDC on Arc.
+                Spigot lets an AI agent buy a live data or inference stream in USDC on Arc, second by second, and
+                stop paying the moment the stream stops being worth it. No subscription, no prepaid credits, nobody
+                clicking pay. Live on Arc mainnet, on two rails.
               </p>
               <div className="hero__cta">
                 <a className="btn" href="#console">

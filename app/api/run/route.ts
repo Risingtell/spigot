@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { MemoryStore, MockSettlementProvider, StreamingMeter, type SettlementProvider } from "meter402";
 import { StreamingAgent, type TickContext } from "@/src/agent";
 import { ARC, unitsToUsdc } from "@/src/arc";
+import { DIRECT_RESERVE_UNITS, GATEWAY_RESERVE_UNITS } from "@/src/reserves";
 import { economicSettlementSeconds, fetchSettlementCost, minEconomicSettlementUnits } from "@/src/arc-gas";
 import { ArcEoaSettlementProvider, arcKeyConfigured } from "@/src/arc-eoa";
 import { NanoSettlementProvider, nanoConfigured } from "@/src/nano";
@@ -51,9 +52,9 @@ const SIMULATED_PROVIDER = "0xProviderTreasury000000000000000000000000";
  */
 const MIN_LIVE_GAP_MS = 15_000;
 /** Stop settling live once the wallet falls to this, so the demo cannot drain itself. */
-const RESERVE_UNITS = 500_000n; // $0.50 of USDC always stays in the wallet
+const RESERVE_UNITS = DIRECT_RESERVE_UNITS;
 /** The same idea for the Gateway balance the gas-free rail spends from. */
-const GATEWAY_RESERVE_UNITS = 200_000n; // $0.20
+
 /** Re-reading the balance every click would be its own rate-limit problem. */
 const BALANCE_TTL_MS = 60_000;
 
