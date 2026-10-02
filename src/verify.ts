@@ -71,10 +71,22 @@ async function main(): Promise<void> {
 
   const fromBlock = process.env.SPIGOT_FROM_BLOCK ? Number(process.env.SPIGOT_FROM_BLOCK) : GENESIS_BLOCK;
 
+  /**
+   * The scan runs to the chain head by default, which is the honest thing to do:
+   * a total is only trustworthy if nothing after the last settlement was skipped.
+   * It is also slow and gets slower, because Arc adds about 130,000 blocks a day
+   * and every 9,000 of them is one more throttled window. SPIGOT_TO_BLOCK stops
+   * the scan earlier for anyone who wants a quick look; the output says plainly
+   * that the window was cut short, so a bounded run can never be mistaken for the
+   * full one.
+   */
+  const toBlock = process.env.SPIGOT_TO_BLOCK ? Math.min(Number(process.env.SPIGOT_TO_BLOCK), head) : head;
+  const bounded = toBlock < head;
+
   console.log("Settlements");
   console.log(`  agent:             ${agentAddress}`);
   console.log(`  token:             ${ARC.usdc} (USDC on Arc)`);
-  console.log(`  blocks to scan:    ${fromBlock} to ${head}`);
+  console.log(`  blocks to scan:    ${fromBlock} to ${toBlock}${bounded ? ` (bounded by SPIGOT_TO_BLOCK; head is ${head})` : ""}`);
 
   /**
    * Arc caps a log query at 10,000 blocks and throttles the calls on top of that,
@@ -84,7 +96,7 @@ async function main(): Promise<void> {
    */
   const scan = await scanSettlements({
     fromBlock,
-    toBlock: head,
+    toBlock,
     onWindow: (done, total) => {
       // Plain lines rather than a redrawn one: this output gets piped and read
       // as often as it gets watched, and a carriage return turns a log into soup.

@@ -52,11 +52,25 @@ This is the load-bearing command. It needs no keys and no configuration. It:
    token's `Transfer` logs, over the full history from the first settlement to the
    current head.
 
-**It prints progress while it runs.** Arc caps a log query at 10,000 blocks and
-throttles the calls, so step 3 is a sequence of windows from the first mainnet
-settlement (block 21394997) to the head, one more every 9,000 blocks. It waits the
-throttle out rather than failing, and if a window still cannot be read it says so
-and calls the total a floor instead of quietly reporting a short count.
+**It prints progress while it runs, and it is not quick.** Arc caps a log query at
+10,000 blocks and throttles the calls, so step 3 walks every window from the first
+mainnet settlement (block 21394997) to the current head, one window per 9,000
+blocks. Arc produces about 130,000 blocks a day, so that is roughly 280 windows as
+of early October and about fourteen more each day. It waits the throttle out rather
+than failing, and if a window still cannot be read it says so and calls the total a
+floor instead of quietly reporting a short count.
+
+Two shortcuts if you do not want to wait for the full scan:
+
+```bash
+SPIGOT_TO_BLOCK=21580000 npm run verify
+```
+
+reads only the range the settlements actually landed in, about twenty windows, and
+says on screen that it stopped early so a bounded run can never be mistaken for the
+full one. Or open [`/api/impact`](https://spigot-taupe.vercel.app/api/impact), which
+answers from the same chain data in under a second. Neither is the authoritative
+path; the unbounded scan above is.
 
 Every number it prints comes from Arc. Nothing is read from a Spigot server or
 database. Cross-check any hash or the agent's balance on
@@ -77,8 +91,8 @@ Fee market
 Settlements
   agent:             0xCCAC4D9416280d6c1492dCC0D4c4e501b99fA8bC
   token:             0x3600000000000000000000000000000000000000 (USDC on Arc)
-  settlements:       8
-  total settled:     $0.641500
+  settlements:       11
+  total settled:     $0.762400
     excluded, not a settlement: 1 transfer(s) to Circle Gateway deposit, $1.000000
   chain fee share:   1.63% of each settlement
 ```

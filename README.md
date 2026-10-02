@@ -12,9 +12,9 @@ Encode x Arc Programmable Money Hackathon, Agentic Economy track
 | | |
 | --- | --- |
 | Chain | **Arc mainnet** (chain id 5042), USDC as the gas token. `SPIGOT_NETWORK=testnet` switches every path to Arc Testnet (5042002) |
-| Settled on the direct rail | **8 settlements, $0.6415 USDC on Arc mainnet**, every one a `Transfer` in Arc's token ledger, from block 21394997 |
+| Settled on the direct rail | **11 settlements, $0.7624 USDC on Arc mainnet**, every one a `Transfer` in Arc's token ledger, from block 21394997 |
 | Settled gas free | **6 settlements, $0.3688 USDC** through Circle Nanopayments on mainnet, signed off-chain and batched by Circle |
-| Both rails together | **14 settlements, $1.0103 USDC** on the day mainnet went live (17 Sep 2026), and climbing every time somebody runs the hosted console live |
+| Both rails together | **17 settlements, $1.1312 USDC** since mainnet went live on 17 Sep 2026, and climbing every time somebody runs the hosted console live |
 | Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
