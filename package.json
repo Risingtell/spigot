@@ -18,6 +18,8 @@
     "topup": "node --env-file-if-exists=.env.local --import tsx src/run-topup.ts",
     "wallet:new": "tsx scripts/new-wallet.ts",
     "nano": "node --env-file-if-exists=.env.local --import tsx src/run-nano.ts",
+    "seller": "node --env-file-if-exists=.env.local --import tsx examples/seller.ts",
+    "buy": "node --env-file-if-exists=.env.local --import tsx examples/buy.ts",
     "seed": "tsx scripts/build-seed.ts"
   },
   "dependencies": {

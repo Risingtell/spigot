@@ -21,8 +21,8 @@ Built at the Encode x Arc Programmable Money Hackathon, now live on Arc mainnet
 | --- | --- |
 | Chain | **Arc mainnet** (chain id 5042), USDC as the gas token. `SPIGOT_NETWORK=testnet` switches every path to Arc Testnet (5042002) |
 | Settled on the direct rail | **11 settlements, $0.7624 USDC on Arc mainnet**, every one a `Transfer` in Arc's token ledger, from block 21394997 |
-| Settled gas free | **6 settlements, $0.3688 USDC** through Circle Nanopayments on mainnet, signed off-chain and batched by Circle |
-| Both rails together | **17 settlements, $1.1312 USDC** since mainnet went live on 17 Sep 2026, and climbing every time somebody runs the hosted console live |
+| Settled gas free | **7 settlements, $0.3988 USDC** through Circle Nanopayments on mainnet, signed off-chain and batched by Circle |
+| Both rails together | **18 settlements, $1.1612 USDC** since mainnet went live on 17 Sep 2026, and climbing every time somebody runs the hosted console live |
 | Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
@@ -220,6 +220,41 @@ Coinbase exchange ticker and keeps buying only while the market is active enough
 to be worth the price. Spot price turned out to be useless at this cadence, with
 eight of nine one-second samples unchanged, so the agent rules on trades per
 second instead, taken from the ticker's monotonic trade id.
+
+## Sell into it, or buy from anyone
+
+A buyer with nobody to pay proves half a market, so both halves ship here and
+neither needs Spigot to run.
+
+**Sell by the second.** [`examples/seller.ts`](./examples/seller.ts) is a
+framework-free HTTP seller in about a hundred lines: it quotes a price per block
+over x402, verifies the buyer's signed USDC authorisation against Circle Gateway
+on Arc, and hands back the goods. Replace one function, `produce()`, with whatever
+you actually sell.
+
+```bash
+SPIGOT_PROVIDER_ADDRESS=0xYourPayoutAddress npm run seller
+```
+
+**Buy from anyone.** [`examples/buy.ts`](./examples/buy.ts) pays any x402 endpoint
+on Arc from the agent's wallet, not just Spigot's own seller. Point it at somebody
+else's service and the money leaves for an address this project does not control.
+
+```bash
+npm run buy -- http://localhost:4021/sell?units=30000
+```
+
+Run the two against each other and the whole handshake, quote to signature to
+delivery to settlement, happens in about a second. That round trip was exercised
+on Arc mainnet while writing this: $0.030000 USDC paid from the agent's Gateway
+balance, which fell from $0.631250 to $0.601250, with the goods returned before
+the money moved.
+
+One ordering in the seller is worth copying rather than reinventing: it produces
+the goods **before** it settles. Taking the money first means a slow or failing
+service can leave a buyer paid-up and empty-handed, which is the one failure a
+payments product cannot have. This way round, a seller that cannot deliver simply
+does not get paid.
 
 ## Capability map
 
