@@ -55,10 +55,10 @@ This is the load-bearing command. It needs no keys and no configuration. It:
 **It prints progress while it runs, and it is not quick.** Arc caps a log query at
 10,000 blocks and throttles the calls, so step 3 walks every window from the first
 mainnet settlement (block 21394997) to the current head, one window per 9,000
-blocks. Arc produces about 130,000 blocks a day, so that is roughly 280 windows as
-of early October and about fourteen more each day. It waits the throttle out rather
-than failing, and if a window still cannot be read it says so and calls the total a
-floor instead of quietly reporting a short count.
+blocks. Arc produces about 130,000 blocks a day, so that was about 650 windows on
+22 October, roughly ten minutes, and about fourteen more each day. It waits the
+throttle out rather than failing, and if a window still cannot be read it says so
+and calls the total a floor instead of quietly reporting a short count.
 
 Two shortcuts if you do not want to wait for the full scan:
 
@@ -66,40 +66,55 @@ Two shortcuts if you do not want to wait for the full scan:
 SPIGOT_TO_BLOCK=21580000 npm run verify
 ```
 
-reads only the range the settlements actually landed in, about twenty windows, and
-says on screen that it stopped early so a bounded run can never be mistaken for the
-full one. Or open [`/api/impact`](https://spigot-taupe.vercel.app/api/impact), which
-answers from the same chain data in under a second. Neither is the authoritative
-path; the unbounded scan above is.
+reads only the first twenty windows after the first settlement, where the first
+eleven settlements landed, and says on screen that it stopped early so a bounded
+run can never be mistaken for the full one. Or open
+[`/api/impact`](https://spigot-taupe.vercel.app/api/impact), which answers in a few
+seconds from a checked-in derivation of the finalised range (`src/seed.json`,
+rebuilt from Arc by `npm run seed`) plus a live read of the blocks after it, and
+names exactly which blocks it covered. Neither is the authoritative path; the
+unbounded scan above is.
 
 Every number it prints comes from Arc. Nothing is read from a Spigot server or
 database. Cross-check any hash or the agent's balance on
 [explorer.arc.io](https://explorer.arc.io) if you want a second source.
 
-Expected shape of the output. The gas price moves; the settlement count and total
-should match exactly:
+Expected shape of the output, as run on 22 October 2026. The gas price moves. The
+settlement count and total can only grow, each time someone runs the hosted
+console live, so expect at least these:
 
 ```
 Fee market
   rpc:               https://rpc.mainnet.arc.io
   chain id:          5042 (Arc)
-  gas price:         20.1000 gwei  (live)
-  one settlement:    $0.001307 at 65000 gas
-  economical floor:  $0.026140 to keep the chain fee under 5%
-  cadence:           settle about every 26s on a $0.001/sec stream
+  block height:      27290150
+  gas price:         20.5000 gwei  (live)
+  one settlement:    $0.001333 at 65000 gas
+  economical floor:  $0.026660 to keep the chain fee under 5%
+  cadence:           settle about every 27s on a $0.001/sec stream
 
 Settlements
   agent:             0xCCAC4D9416280d6c1492dCC0D4c4e501b99fA8bC
   token:             0x3600000000000000000000000000000000000000 (USDC on Arc)
-  settlements:       11
-  total settled:     $0.762400
+  blocks to scan:    21394997 to 27290150
+  settlements:       14
+  total settled:     $1.227300
     excluded, not a settlement: 1 transfer(s) to Circle Gateway deposit, $1.000000
-  chain fee share:   1.63% of each settlement
+    excluded, not a settlement: 2 transfer(s) to provider 0xfeee02d5…, $3.500000
+    excluded, not a settlement: 1 transfer(s) to provider 0xcfee2c55…, $0.400000
+    excluded, not a settlement: 1 transfer(s) to provider 0x81d24923…, $0.150000
+    excluded, not a settlement: 1 transfer(s) to provider 0x30a4d03b…, $0.500000
+    excluded, not a settlement: 1 transfer(s) to provider 0xe94040f1…, $0.500000
+    excluded, not a settlement: 1 transfer(s) to provider 0xf0d563c8…, $0.500000
+  average size:      $0.087664
+  chain fee share:   1.52% of each settlement
 ```
 
-That excluded line is the point of the whole project in one row: the $1 that
-funded the Gateway balance is also a transfer out of the agent, and counting it as
-revenue is exactly the overclaim this build exists to refuse.
+Those excluded lines are the point of the whole project in one block: the $1 that
+funded the Gateway balance, and the agent's float moving to other wallets, are all
+transfers out of the agent, and counting any of them as revenue is exactly the
+overclaim this build exists to refuse. Only transfers that reached Spigot's own
+provider count.
 
 ## 3. Watch an agent run end to end (1 minute)
 
@@ -117,13 +132,15 @@ than it settled.
 npm test
 ```
 
-29 tests over the rules that move money: the mainnet/testnet switch, unit conversion between Arc's 18-decimal
+30 tests over the rules that move money: the mainnet/testnet switch, unit conversion between Arc's 18-decimal
 gas view and the 6-decimal billing view, the economical settlement floor, the
 budget invariant, the guarantee that a provider is never left holding unpaid
 delivered time, the refusal to retry a settlement that may still be in flight, the
 treasury rules including that a draw is fundable from the agent's balance across
 chains when no single chain holds enough, and the value signal's own calibration,
-including that a dead market cannot set itself a bar of zero and then clear it.
+including that a dead market cannot set itself a bar of zero and then clear it, and
+that the public record reads its live blocks from a fixed anchor, so a settlement
+can never age out of its count.
 
 ## What to look at in the code
 

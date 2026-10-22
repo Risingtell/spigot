@@ -25,6 +25,7 @@ import {
   resolveFromBlock,
   scanSettlements,
   settlementsToProvider,
+  windowsAfter,
 } from "./chain";
 import { GATEWAY_CHAIN } from "./nano";
 import { withRetry } from "./retry";
@@ -71,8 +72,13 @@ export interface Impact {
   perProvider: Record<string, { count: number; total: string }>;
   /** Exactly which block ranges were read, so the bound is visible rather than implied. */
   scannedWindows: WindowRange[];
-  /** How much of Arc's history this figure actually rests on. */
-  coverage: { read: number; total: number; complete: boolean };
+  /**
+   * How much of Arc's history this figure actually rests on. `stable` means every
+   * window this request set out to read was read, so asking again would not add
+   * to it: true whenever it is complete, and also when the live tail is full and
+   * only a fresh `npm run seed` would reach further.
+   */
+  coverage: { read: number; total: number; complete: boolean; stable: boolean };
   /** Arc's head at the time of the request. */
   headBlock: number;
   builtAt: string;
@@ -124,7 +130,7 @@ async function fromArc(
   result: ImpactSource;
   perProvider: Impact["perProvider"];
   windows: WindowRange[];
-  coverage: { read: number; total: number; complete: boolean };
+  coverage: Impact["coverage"];
 }> {
   const genesis = resolveFromBlock({ toBlock: head });
   const started = Date.now();
@@ -154,66 +160,70 @@ async function fromArc(
    *
    * The settlements live in a known, finite band starting at the first one. This
    * reads that band, forward, every time, and gets the same answer on every
-   * instance. It is bounded and it does not grow with the chain. What it does not
-   * cover is anything the hosted console settles from here on, which is why the
-   * note points at npm run verify for the complete figure.
+   * instance.
+   *
+   * That band used to be fixed at twenty windows from genesis, which held the
+   * first day and a half and then went quietly stale: everything the hosted
+   * console settled afterwards sat past the band and was never counted, so the
+   * feed said 11 while npm run verify found 14. The band now has two parts, both
+   * anchored at a fixed block so neither can walk backwards. Up to `seed.toBlock`
+   * comes from the checked-in seed, however long that range is. After it, at most
+   * MAX_TAIL_WINDOWS windows are read live, forward from the seed's last block.
+   * Anything past the tail is named as unread rather than implied, and
+   * `npm run seed` moves the seed up to the head again.
    */
-  const MAX_WINDOWS = 20;
-  const total = Math.min(MAX_WINDOWS, Math.ceil((head - genesis + 1) / BLOCKS_PER_CHUNK));
-  const ceiling = Math.min(head, genesis + total * BLOCKS_PER_CHUNK - 1);
-
-  let read = 0;
-  let budgetSpent = false;
-  let lowest = head + 1;
-  let highest = genesis - 1;
+  const MAX_TAIL_WINDOWS = 20;
 
   /**
-   * The window this feed reads is finalised, so its answer cannot change, and
-   * re-deriving it on every cold instance costs seventeen seconds of Arc's
-   * throttled RPC to learn something nobody could have altered. `npm run seed`
-   * derives it once and checks the result in, and it is used here when it covers
-   * exactly the same blocks. When it does not, the scan runs as before, so the
-   * feed is never dependent on the file being present or current.
+   * The seeded range is finalised, so its answer cannot change, and re-deriving it
+   * on every cold instance would cost seconds of Arc's throttled RPC per window to
+   * learn something nobody could have altered. It is used whenever it starts at
+   * the same genesis and ends at or below the head. When it does not, the tail
+   * simply starts at genesis, so the feed never depends on the file being present.
    */
-  const seeded = seed.fromBlock === genesis && seed.toBlock === ceiling;
-  if (seeded) {
-    absorb(seed.perProvider as Impact["perProvider"]);
-    read = total;
-    lowest = seed.fromBlock;
-    highest = seed.toBlock;
-  } else {
-    for (let i = 0; i < total; i++) {
-      const from = genesis + i * BLOCKS_PER_CHUNK;
-      const to = Math.min(head, from + BLOCKS_PER_CHUNK - 1);
-      const key = `${from}-${to}`;
+  const seeded = seed.fromBlock === genesis && seed.toBlock <= head && seed.toBlock >= genesis;
+  const after = seeded ? seed.toBlock : genesis - 1;
+  const seededWindows = seeded ? seed.windows : 0;
+  if (seeded) absorb(seed.perProvider as Impact["perProvider"]);
 
-      const cached = windowCache.get(key);
-      if (cached) {
-        absorb(cached);
-        read += 1;
-        lowest = Math.min(lowest, from);
-        highest = Math.max(highest, to);
-        continue;
-      }
+  const tail = windowsAfter(after, head, MAX_TAIL_WINDOWS);
+  const total = seededWindows + Math.ceil((head - after) / BLOCKS_PER_CHUNK);
+  let read = seededWindows;
+  let budgetSpent = false;
+  const covered: WindowRange[] = seeded ? [{ fromBlock: seed.fromBlock, toBlock: seed.toBlock }] : [];
 
+  for (const { fromBlock: from, toBlock: to } of tail) {
+    const key = `${from}-${to}`;
+
+    let perProvider = windowCache.get(key);
+    if (!perProvider) {
       if (Date.now() - started > SCAN_BUDGET_MS) {
         budgetSpent = true;
         break;
       }
-
       const scan = await scanSettlements({ fromBlock: from, toBlock: to });
       if (scan.missed.length) continue; // read it next time rather than cache a hole
-      absorb(scan.totals.perProvider);
-      if (to < head) windowCache.set(key, scan.totals.perProvider);
-      read += 1;
-      lowest = Math.min(lowest, from);
-      highest = Math.max(highest, to);
+      perProvider = scan.totals.perProvider;
+      if (to < head) windowCache.set(key, perProvider);
     }
+
+    absorb(perProvider);
+    read += 1;
+    const last = covered.at(-1);
+    if (last && last.toBlock + 1 === from) last.toBlock = to;
+    else covered.push({ fromBlock: from, toBlock: to });
   }
 
   const paid = settlementsToProvider(merged);
   const funding = paid.otherOutflows.reduce((n, o) => n + o.count, 0);
   const complete = read === total;
+  const stable = read === seededWindows + tail.length;
+  const lastRead = covered.at(-1)?.toBlock ?? after;
+  const span = covered.map((w) => `${w.fromBlock} to ${w.toBlock}`).join(", ");
+  const fromSeed = seeded
+    ? `Blocks ${seed.fromBlock} to ${seed.toBlock} are finalised, derived from Arc's transfer log by ` +
+      `scripts/build-seed.ts and checked in; regenerate them with npm run seed. `
+    : "";
 
   return {
     result: {
@@ -224,23 +234,23 @@ async function fromArc(
       note:
         `Transfers that reached the provider, re-derived from Arc's own logs. ` +
         (complete
-          ? `Blocks ${lowest} to ${highest}, the window the direct rail settled in, ` +
-            (seeded
-              ? `derived from Arc's transfer log by scripts/build-seed.ts over finalised blocks and checked in, ` +
-                `because that range cannot change. Regenerate it with npm run seed. `
-              : `read in full on this request. `) +
+          ? `Blocks ${span}, every block from the first settlement to the head. ` +
+            fromSeed +
+            (tail.length ? `The ${tail.length} window(s) after that were read on this request. ` : "") +
             `Arc caps a log query at 10,000 blocks and produces about 130,000 a day, so a request-time scan has to be ` +
             `bounded; npm run verify reads the whole chain to block ${head} with no bound at all.`
-          : `${read} of ${total} windows from block ${genesis} were read, so this is a floor and not the total. ` +
+          : `${read} of ${total} windows from block ${genesis} were read (blocks ${span || "none"}), so this is a ` +
+            `floor and not the total: anything settled after block ${lastRead} is not counted here. ` +
+            fromSeed +
             `npm run verify reads the whole chain to block ${head} in one go.`) +
         (budgetSpent ? " The remaining windows ran out of time on this request." : "") +
         (funding
-          ? ` ${funding} further transfer(s) left the agent to fund its Circle Gateway balance; those are movement, not revenue, and are excluded.`
+          ? ` ${funding} further transfer(s) left the agent for its Circle Gateway balance or for other wallets, not for the provider; those are movement, not revenue, and are excluded.`
           : ""),
     },
     perProvider: merged,
-    windows: highest >= lowest ? [{ fromBlock: lowest, toBlock: highest }] : [],
-    coverage: { read, total, complete },
+    windows: covered,
+    coverage: { read, total, complete, stable },
   };
 }
 
@@ -305,7 +315,7 @@ export async function buildImpact(): Promise<Impact> {
   let onChain = empty("Arc USDC transfer log", "Could not be read.");
   let perProvider: Impact["perProvider"] = {};
   let scannedWindows: WindowRange[] = [];
-  let coverage = { read: 0, total: 0, complete: false };
+  let coverage: Impact["coverage"] = { read: 0, total: 0, complete: false, stable: false };
   try {
     const arc = await fromArc(toBlock);
     onChain = arc.result;

@@ -30,11 +30,15 @@ const PARTIAL_CACHE_MS = 3_000;
  * answer served everybody and coverage never grew past the first pass. An
  * incomplete response therefore gets a short cache, which lets the next request
  * through to finish the job, and the complete one gets the long cache it deserves.
+ * So does a stable one: when the live tail is full, another request would read
+ * exactly the same windows, and re-reading them every few seconds helps nobody.
  */
 const CDN_CACHE_COMPLETE = "public, s-maxage=300, stale-while-revalidate=1800";
 const CDN_CACHE_PARTIAL = "public, s-maxage=5, stale-while-revalidate=30";
-const cacheFor = (body: unknown) =>
-  (body as { coverage?: { complete?: boolean } })?.coverage?.complete ? CDN_CACHE_COMPLETE : CDN_CACHE_PARTIAL;
+const cacheFor = (body: unknown) => {
+  const coverage = (body as { coverage?: { complete?: boolean; stable?: boolean } })?.coverage;
+  return coverage?.complete || coverage?.stable ? CDN_CACHE_COMPLETE : CDN_CACHE_PARTIAL;
+};
 
 /**
  * Spigot's public record. Every number in the response is fetched from a ledger

@@ -22,6 +22,7 @@ import {
   blockValueUnits,
 } from "../src/market";
 import { planTopUp, treasuryPolicy } from "../src/treasury";
+import { windowsAfter } from "../src/chain";
 
 /** Records what it was asked to settle, so tests can assert on money moved. */
 class RecordingProvider implements SettlementProvider {
@@ -488,4 +489,31 @@ test("the unified balance is the sum of every chain, and the policy reads that o
     "the draw must be fundable from the unified balance even though no one chain holds it",
   );
   assert.ok(perChain.every((row) => BigInt(row.units) < BigInt(usdcToUnits(Number(plan.amountUsdc)))));
+});
+
+// ---------------------------------------------------------------------------
+// Public record
+// ---------------------------------------------------------------------------
+
+test("the feed's live read is anchored where the seed ends, so a settlement never ages out of it", () => {
+  // Two requests with the head a few hundred blocks apart must read the same
+  // windows; only the last one may grow. Anchoring at the head instead is what
+  // once made the published count fall from 21 to 16.
+  const early = windowsAfter(1_000, 20_500, 20, 9_000);
+  const later = windowsAfter(1_000, 20_900, 20, 9_000);
+  assert.deepEqual(early, [
+    { fromBlock: 1_001, toBlock: 10_000 },
+    { fromBlock: 10_001, toBlock: 19_000 },
+    { fromBlock: 19_001, toBlock: 20_500 },
+  ]);
+  assert.deepEqual(later.slice(0, 2), early.slice(0, 2));
+  assert.equal(later[2].toBlock, 20_900);
+
+  // Bounded: past the budget it stops rather than reading on, and says where.
+  const capped = windowsAfter(0, 1_000_000, 3, 9_000);
+  assert.equal(capped.length, 3);
+  assert.equal(capped[2].toBlock, 27_000);
+
+  // A seed that already reaches the head leaves nothing to read live.
+  assert.deepEqual(windowsAfter(20_900, 20_900, 20, 9_000), []);
 });

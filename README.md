@@ -20,13 +20,13 @@ Built at the Encode x Arc Programmable Money Hackathon, now live on Arc mainnet
 | | |
 | --- | --- |
 | Chain | **Arc mainnet** (chain id 5042), USDC as the gas token. `SPIGOT_NETWORK=testnet` switches every path to Arc Testnet (5042002) |
-| Settled on the direct rail | **11 settlements, $0.7624 USDC on Arc mainnet**, every one a `Transfer` in Arc's token ledger, from block 21394997 |
+| Settled on the direct rail | **14 settlements, $1.2273 USDC on Arc mainnet**, every one a `Transfer` in Arc's token ledger, from block 21394997 |
 | Settled gas free | **7 settlements, $0.3988 USDC** through Circle Nanopayments on mainnet, signed off-chain and batched by Circle |
-| Both rails together | **18 settlements, $1.1612 USDC** since mainnet went live on 17 Sep 2026, and climbing every time somebody runs the hosted console live |
+| Both rails together | **21 settlements, $1.6261 USDC** from mainnet launch on 17 Sep to 22 Oct 2026. It grows each time somebody runs the hosted console live; [`/api/impact`](https://spigot-taupe.vercel.app/api/impact) and `npm run verify` give today's figure |
 | Chain fee share | Held under a **5% ceiling on every settlement**, including the last one. `npm run verify` recomputes what it actually was |
 | Settlement cadence | derived from the live fee market, not hardcoded |
 | Verification | `npm run verify` re-derives everything from Arc, no keys, no config |
-| Tests | **29 passing**, over the rules that move money |
+| Tests | **30 passing**, over the rules that move money |
 | SDK | built on [meter402](https://www.npmjs.com/package/meter402), published on npm |
 
 Spigot was built and proven on Arc Testnet during the hackathon and moved to Arc
@@ -170,7 +170,7 @@ No keys, no wallet, no chain writes:
 npm install
 npm run demo      # an agent holds a stream, batches settlement, stops itself
 npm run verify    # re-derive the fee market and any settled totals from Arc
-npm test          # 29 tests over the rules that move money
+npm test          # 30 tests over the rules that move money
 ```
 
 `npm run verify` is the one to read closely. It takes Arc's gas price live, prices
@@ -333,16 +333,19 @@ keeps only a few dollars in the agent wallet. Beyond that:
   genuinely holds across instances is the agent's own on-chain balance, which is
   why live settlement simply stops being offered below a reserve. Said plainly in
   [`app/api/run/route.ts`](./app/api/run/route.ts) rather than dressed up.
-- **The public record reads a bounded window, and pre-derives part of it.** Arc
-  caps a log query at 10,000 blocks and produces about 130,000 a day, so no
-  request-time scan can cover the chain. The feed covers a fixed window anchored at
-  the first settlement and names the blocks it covered. That window is finalised,
-  so it is derived once by `npm run seed` and checked in rather than re-read on
-  every cold start, which takes a cold response from about seventeen seconds to
-  under two. The script is committed, the blocks are named in the output, and
-  `npm run verify` re-derives the same settlements from genesis to the chain head
-  without reading the seed at all. The gas-free half is never seeded: it lives in
-  Circle's API, not in a block, so it is fetched live every time.
+- **The public record pre-derives the finalised range, and reads a bounded tail
+  live.** Arc caps a log query at 10,000 blocks and produces about 130,000 a day,
+  so no request-time scan can cover the chain. Everything from the first
+  settlement up to a finalised block is derived once by `npm run seed` and checked
+  in; each request then reads at most twenty windows (about a day and a half of
+  blocks) forward from where the seed ends, and names exactly which blocks it
+  covered. Both parts are anchored at fixed blocks, so the count can only grow.
+  If more blocks have passed than the tail reads, the feed says which ones it did
+  not read and calls its figure a floor until the seed is rebuilt. The script is
+  committed, and `npm run verify` re-derives the same settlements from genesis to
+  the chain head without reading the seed at all. The gas-free half is never
+  seeded: it lives in Circle's API, not in a block, so it is fetched live every
+  time.
 - **A tail of low and moderate transitive advisories stays open**, all inside
   Circle's own SDKs (`@solana/web3.js`, `@ethersproject/*`, `@coral-xyz/anchor`)
   with no fix published upstream. Deliberately not quoted as a number here,

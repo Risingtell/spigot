@@ -3,13 +3,15 @@
  *
  *   npm run seed
  *
- * The public feed reads a bounded window of Arc's log index on every request. That
- * window is anchored at the first settlement and covers finalised blocks, so the
- * answer it produces is the same today, tomorrow and in a year. Re-deriving it on
- * every cold instance costs about seventeen seconds of Arc's throttled RPC and
- * produces a number nobody could have changed in the meantime.
+ * Everything from the first settlement up to a finalised block gives the same
+ * answer today, tomorrow and in a year, and re-reading it on every cold instance
+ * would cost close to a second of Arc's throttled RPC per 9,000-block window to
+ * produce a number nobody could have changed in the meantime.
  *
- * So it is derived once, here, and checked in. This is not a ledger of our own:
+ * So it is derived once, here, from the first settlement to the head (or to
+ * SPIGOT_TO_BLOCK), and checked in. The public feed reads this range from the
+ * file and only the blocks after it live. Run it again whenever the feed's note
+ * says blocks past its tail went unread. This is not a ledger of our own:
  * the script is committed, the blocks it reads are named in the output, anyone can
  * regenerate it by running this command, and `npm run verify` re-derives the same
  * settlements from genesis to the chain head without reading this file at all. If
@@ -23,23 +25,21 @@ import { writeFileSync } from "node:fs";
 import { BLOCKS_PER_CHUNK, GENESIS_BLOCK, headBlock, scanSettlements } from "../src/chain";
 import { unitsToUsdc } from "../src/arc";
 
-/** Must match the feed's own window, or the seed would cover the wrong range. */
-const WINDOWS = 20;
-
 async function main(): Promise<void> {
   const head = await headBlock();
   const fromBlock = GENESIS_BLOCK;
-  const toBlock = Math.min(head, fromBlock + WINDOWS * BLOCKS_PER_CHUNK - 1);
+  const bound = process.env.SPIGOT_TO_BLOCK ? Number(process.env.SPIGOT_TO_BLOCK) : head;
+  const toBlock = Math.min(head, bound);
 
   console.log("Deriving Spigot's settled history from Arc.\n");
   console.log(`  blocks:  ${fromBlock} to ${toBlock}`);
-  console.log(`  windows: ${WINDOWS}\n`);
+  console.log(`  windows: ${Math.ceil((toBlock - fromBlock + 1) / BLOCKS_PER_CHUNK)}\n`);
 
   const scan = await scanSettlements({
     fromBlock,
     toBlock,
     onWindow: (done, total) => {
-      if (done === total || done % 5 === 0) console.log(`  scanning window ${done} of ${total}`);
+      if (done === total || done % 50 === 0) console.log(`  scanning window ${done} of ${total}`);
     },
   });
 

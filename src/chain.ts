@@ -213,6 +213,28 @@ export function resolveFromBlock(opts: { fromBlock?: number; toBlock: number; ma
   return Math.max(anchored, bounded);
 }
 
+/**
+ * The windows a bounded read covers after a block it already holds: forward from
+ * there, never back from the head.
+ *
+ * Every boundary is fixed by `after`, not by where the head happens to be, so two
+ * requests minutes apart read the same windows and a settlement, once inside one,
+ * stays inside it. Only the last window grows, up to the head.
+ */
+export function windowsAfter(after: number, head: number, maxWindows: number, chunk = CHUNK_SIZE): WindowSpan[] {
+  const out: WindowSpan[] = [];
+  for (let from = after + 1; from <= head && out.length < maxWindows; from += chunk) {
+    out.push({ fromBlock: from, toBlock: Math.min(head, from + chunk - 1) });
+  }
+  return out;
+}
+
+/** An inclusive block range. */
+export interface WindowSpan {
+  fromBlock: number;
+  toBlock: number;
+}
+
 /** A window the scan could not read, kept rather than quietly folded into a zero. */
 export interface MissedWindow {
   fromBlock: number;
