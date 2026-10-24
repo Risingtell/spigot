@@ -31,5 +31,6 @@ jobs:
       - run: npm run build
       # Fails the run on a high or critical advisory. The low and moderate tail
       # lives inside Circle's SDKs with no fix published upstream, so it is
-      # reported, not gated.
-      - run: npm audit --audit-level=high
+      # reported, not gated. Highs with no usable fix are listed, with reasons,
+      # in the script.
+      - run: node scripts/audit-gate.mjs
